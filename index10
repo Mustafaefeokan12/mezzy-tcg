@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Mezzy TCG Tracker</title>
+  
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Mezzy TCG">
+  <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/master-ball.png">
+  <meta name="theme-color" content="#020617">
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <style>
+    :root {
+      --bg-dark: #020617;
+      --card-bg: rgba(15, 23, 42, 0.75);
+      --primary: #3B82F6;
+      --primary-glow: rgba(59, 130, 246, 0.4);
+      --success: #10B981;
+      --success-glow: rgba(16, 185, 129, 0.3);
+      --danger: #EF4444;
+      --warning: #F59E0B;
+      --purple: #A855F7;
+      --text-main: #F8FAFC;
+      --text-muted: #94A3B8;
+      --glass-border: rgba(255, 255, 255, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg-dark); color: var(--text-main); 
+      margin: 0; padding: 15px; padding-bottom: 95px;
+      min-height: 100vh; -webkit-tap-highlight-color: transparent;
+    }
+    .app-container { max-width: 600px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+    .header { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 5px; }
+    .header img { width: 36px; filter: drop-shadow(0 0 6px var(--primary-glow)); }
+    .header h1 { font-size: 22px; margin: 0; background: linear-gradient(90deg, #60A5FA, #A78BFA); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 800; }
+    
+    .panel { background: var(--card-bg); padding: 18px; border-radius: 18px; border: 1px solid var(--glass-border); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+    .panel-title { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+    .val-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+    .val { font-size: 30px; font-weight: 950; color: #FFF; text-shadow: 0 2px 15px var(--primary-glow); }
+    .currency-toggle { background: var(--primary); color: white; border: none; padding: 6px 12px; border-radius: 8px; font-weight: 700; cursor:pointer;}
+    .stats { display: flex; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--glass-border); padding-top: 14px; margin-bottom: 10px; }
+    .stat-box { flex: 1 1 45%; }
+    .stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; margin-bottom:4px;}
+    .stat-value { font-size: 15px; font-weight: 800; }
+    .green { color: var(--success); } .red { color: var(--danger); }
+    .chart-container { position: relative; height: 150px; border-top: 1px dashed var(--glass-border); padding-top: 14px; margin-top:5px; }
+    
+    .data-section { background: rgba(30, 58, 138, 0.25); border-color: rgba(59, 130, 246, 0.3); text-align: center; }
+    .chat-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+    .chat-row { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 10px; font-size: 12px; border: 1px solid var(--glass-border); color: #BFDBFE; }
+    .chat-del-btn { background: rgba(239, 68, 68, 0.2); color: #FCA5A5; border: none; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-size: 10px; cursor:pointer;}
+    
+    .file-btn { background: var(--primary); color: white; padding: 12px; border-radius: 10px; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; width: 100%; border: none; box-sizing: border-box; cursor:pointer;}
+    .db-status { font-size: 11px; color: #93C5FD; margin-top: 8px; }
+
+    input.text-input, select { width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: white; padding: 13px; border-radius: 12px; margin-bottom: 12px; font-size: 14px; outline: none; font-weight: 500; }
+    .selected-chip { display: flex; justify-content: space-between; align-items: center; background: rgba(16, 185, 129, 0.1) !important; border-color: rgba(16, 185, 129, 0.4) !important; padding: 12px 14px !important; }
+    .clear-chip-btn { background: var(--danger); color: #FFF; border: none; border-radius: 50%; width: 26px; height: 26px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor:pointer;}
+    .row { display: flex; gap: 10px; }
+    button.add-btn { width: 100%; background: var(--success); color: white; border: none; padding: 15px; border-radius: 12px; font-size: 15px; font-weight: 800; box-shadow: 0 4px 12px var(--success-glow); cursor:pointer;}
+    
+    .search-results { position: absolute; top: 68px; left: 15px; right: 15px; background: #0F172A; border: 1px solid var(--primary); border-radius: 12px; max-height: 250px; overflow-y: auto; z-index: 100; display: none; box-shadow: 0 15px 30px rgba(0,0,0,0.8); }
+    .suggestion-item { padding: 12px 14px; border-bottom: 1px solid var(--glass-border); cursor:pointer;}
+    .suggestion-item:active { background: rgba(59, 130, 246, 0.15); }
+    
+    .card-list { display: flex; flex-direction: column; gap: 12px; }
+    .card-item { display: flex; flex-direction: column; gap: 10px; padding: 16px; margin-bottom: 0 !important; }
+    .roi-badge { background: rgba(168, 85, 247, 0.15); color: #D8B4FE; padding: 3px 7px; border-radius: 6px; font-size: 10px; font-weight: 800; display: inline-block; margin-bottom: 4px; border: 1px solid rgba(168,85,247,0.3); }
+    .card-actions { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 10px; border: 1px solid var(--glass-border); flex-wrap:wrap; gap:8px;}
+    .qty-controls { display: flex; align-items: center; gap: 10px; }
+    .qty-btn { background: rgba(255,255,255,0.1); border: none; color: white; width: 28px; height: 28px; border-radius: 6px; font-size: 16px; font-weight: bold; cursor:pointer;}
+    .wts-btn { background: rgba(59, 130, 246, 0.15); color: #93C5FD; border: 1px solid rgba(59,130,246,0.3); padding: 6px 10px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor:pointer;}
+    .delete-btn { background: transparent; color: #FCA5A5; border: 1px solid rgba(239,68,68,0.3); padding: 6px 10px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor:pointer;}
+
+    .product-icon { width:44px; height:44px; min-width:44px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; display:flex; justify-content:center; align-items:center; font-size:22px; }
+
+    /* BORSA PİYASA KARTLARI */
+    .market-ticker-card { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: var(--card-bg); border: 1px solid var(--glass-border); border-radius: 16px; cursor: pointer; transition: all 0.2s ease; }
+    .market-ticker-card:active { transform: scale(0.98); background: rgba(30, 58, 138, 0.2); border-color: var(--primary); }
+    .ticker-left { display: flex; align-items: center; gap: 12px; flex: 1; }
+    .ticker-right { text-align: right; }
+
+    /* ALT NAVİGASYON (iOS TAB BAR) */
+    .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 68px; background: rgba(2, 6, 23, 0.88); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--glass-border); display: flex; justify-content: space-around; align-items: center; z-index: 1000; }
+    .nav-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--text-muted); font-size: 11px; font-weight: 600; text-decoration: none; cursor: pointer; flex: 1; padding: 8px 0; transition: color 0.2s; }
+    .nav-item.active { color: var(--primary); font-weight: 800; }
+    .nav-item span.icon { font-size: 20px; }
+
+    /* SAYFA GEÇİŞLERİ */
+    .page-section { display: none; opacity: 0; transform: translateY(6px); transition: opacity 0.25s ease, transform 0.25s ease; }
+    .page-section.active { display: flex; flex-direction: column; gap: 16px; opacity: 1; transform: translateY(0); }
+
+    /* MODAL VE DETAY PENCERELERİ */
+    .modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:9999; justify-content:center; align-items:flex-end; backdrop-filter:blur(8px); }
+    .modal-content { width:100%; max-width:600px; max-height: 90vh; overflow-y: auto; background: #0B132B; border: 1px solid rgba(59,130,246,0.3); padding: 22px; border-top-left-radius: 24px; border-top-right-radius: 24px; box-shadow: 0 -10px 40px rgba(0,0,0,0.9); }
+    .sell-row { display:flex; gap:10px; margin-bottom:10px; align-items:center; }
+    .sell-row .text-input { margin-bottom:0; padding:12px; font-size:13px; }
+    .del-row-btn { background:var(--danger); border:none; border-radius:10px; color:#fff; font-weight:bold; height:42px; width:42px; cursor:pointer; display:flex; justify-content:center; align-items:center; }
+    
+    .listing-item { background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); padding: 10px 14px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/master-ball.png" alt="Pokeball">
+      <h1>Mezzy TCG Tracker</h1>
+    </div>
+
+    <!-- SAYFA 1: PORTFÖY & ENVANTER -->
+    <div id="pagePortfolio" class="page-section active">
+      
+      <!-- Cihazlar Arası Aktarım & Yedek -->
+      <div class="panel" style="background: rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.3);">
+        <div class="panel-title" style="color: #D8B4FE;">🔄 Cihazlar Arası Aktarım & Yedek</div>
+        <div style="display:flex; gap:10px; margin-top:4px;">
+          <button onclick="exportData()" class="file-btn" style="flex:1; background:rgba(59, 130, 246, 0.2); border:1px solid var(--primary); color:#93C5FD;">📤 Yedeği Paylaş</button>
+          <label class="file-btn" style="flex:1; background:rgba(16, 185, 129, 0.2); border:1px solid var(--success); color:#34D399; cursor:pointer;">
+            📥 Yedeği Yükle
+            <input type="file" accept=".json" style="display:none;" onchange="importData(event)">
+          </label>
+        </div>
+      </div>
+
+      <!-- Veritabanı Yöneticisi -->
+      <div class="panel data-section">
+        <div class="panel-title" style="color:#FFF; justify-content:center;">WhatsApp Veritabanı</div>
+        <div id="chatManager" class="chat-list"></div>
+        <div style="position:relative;">
+          <label class="file-btn" for="fileInput">📁 WhatsApp ZIP Ekle</label>
+          <input type="file" accept=".zip" id="fileInput" style="display:none;" onchange="parseWhatsAppZip(event)">
+        </div>
+        <div class="db-status" id="dbStatus">Sistem Hazır</div>
+      </div>
+
+      <!-- Portföy Özeti Kartı -->
+      <div class="panel">
+        <div class="panel-title">
+          <span>Portföy Finansal Özeti</span>
+          <span id="rateInfo" style="font-size: 9px; color: var(--primary);">Kur Çekiliyor...</span>
+        </div>
+        <div class="val-container">
+          <div class="val" id="totalValue">0 ₺</div>
+          <button class="currency-toggle" onclick="toggleCurrency()">₺ / $</button>
+        </div>
+        <div class="stats">
+          <div class="stat-box">
+            <div class="stat-label">Toplam Harcanan</div>
+            <div class="stat-value" id="totalSpent">0 ₺</div>
+          </div>
+          <div class="stat-box" style="text-align: right;">
+            <div class="stat-label">Aktif Maliyet (Stok)</div>
+            <div class="stat-value" id="totalCost">0 ₺</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Beklenen Kâr (Aktif)</div>
+            <div class="stat-value" id="expectedProfit">+0 ₺</div>
+          </div>
+          <div class="stat-box" style="text-align: right;">
+            <div class="stat-label">Gerçekleşen Kâr (Net)</div>
+            <div class="stat-value" id="realizedProfit">+0 ₺</div>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="portfolioChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Portföye Ekleme Paneli -->
+      <div class="panel" style="position:relative;">
+        <input type="text" id="cardName" class="text-input" placeholder="🔍 Ürün ara (örn: 151, Pitch Black, Prismatic)..." oninput="searchLocal(event)" autocomplete="off">
+        
+        <div id="selectedCardChip" class="text-input selected-chip" style="display:none;">
+          <span id="selectedCardNameText" style="font-weight:600; color:#34D399; font-size:13px; flex:1; line-height:1.4;"></span>
+          <button class="clear-chip-btn" onclick="clearSelection()">✖</button>
+        </div>
+
+        <div class="search-results" id="searchResults"></div>
+
+        <div class="row" style="margin-bottom:12px;">
+          <input type="number" id="buyPrice" class="text-input" placeholder="Birim Alış (₺)" style="flex:1; margin-bottom:0;">
+          <input type="number" id="currentPrice" class="text-input" placeholder="Piyasa Değeri (₺)" style="flex:1; margin-bottom:0;">
+        </div>
+        <div class="row">
+          <input type="number" id="qtyInput" class="text-input" value="1" min="1" placeholder="Adet" style="flex:1;">
+        </div>
+        <button class="add-btn" onclick="addCard()">Portföye Ekle</button>
+      </div>
+
+      <!-- Aktif Stok Listesi -->
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <span style="font-size:12px; font-weight:bold; color:var(--text-muted);">Aktif Envanter</span>
+          <select id="sortFilter" style="background:rgba(0,0,0,0.4); border:1px solid var(--glass-border); color:#FFF; padding:6px 10px; border-radius:8px; font-size:11px; outline:none;" onchange="renderCards()">
+            <option value="newest">En Yeni</option>
+            <option value="profitDesc">Kârı Yüksek</option>
+            <option value="costDesc">Maliyeti Yüksek</option>
+            <option value="az">A-Z</option>
+          </select>
+        </div>
+        <div class="card-list" id="cardList"></div>
+      </div>
+
+      <!-- Satılanlar Geçmişi -->
+      <div style="margin-top: 20px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <span style="font-size:12px; font-weight:bold; color:var(--text-muted);">Satılanlar (Geçmiş)</span>
+        </div>
+        <div class="card-list" id="soldList"></div>
+      </div>
+
+    </div>
+
+    <!-- SAYFA 2: PİYASA TAKİBİ (BORSA EKRANI) -->
+    <div id="pageMarket" class="page-section">
+      
+      <div class="panel" style="background: linear-gradient(135deg, rgba(30,58,138,0.3), rgba(15,23,42,0.8)); border-color: rgba(59,130,246,0.3);">
+        <div class="panel-title" style="color: #60A5FA;">📊 TCG Piyasa Terminali</div>
+        <div style="font-size: 13px; color: var(--text-muted); line-height: 1.4;">
+          WhatsApp gruplarındaki son güncel ilanlar otomatik taranarak ortalama borsa fiyatları listelenmiştir. Detay ve fiyat grafiği için bir ürüne dokunun.
+        </div>
+      </div>
+
+      <div style="position:relative;">
+        <input type="text" id="marketSearchInput" class="text-input" placeholder="🔍 Piyasa terminalinde ara (Set adı, ETB, Bundle)..." oninput="renderMarketList()" style="margin-bottom:6px;">
+      </div>
+
+      <div id="marketSummaryCount" style="font-size:11px; color:var(--text-muted); font-weight:700; padding: 0 4px;">
+        0 Farklı Ürün Takipte
+      </div>
+
+      <!-- Piyasa Ticker Listesi -->
+      <div id="marketTickerList" style="display:flex; flex-direction:column; gap:10px;"></div>
+
+    </div>
+
+  </div>
+
+  <!-- ALT MENÜ (iOS TAB BAR) -->
+  <div class="bottom-nav">
+    <div id="tabPortfolio" class="nav-item active" onclick="switchTab('portfolio')">
+      <span class="icon">📦</span>
+      <span>Portföyüm</span>
+    </div>
+    <div id="tabMarket" class="nav-item" onclick="switchTab('market')">
+      <span class="icon">📈</span>
+      <span>Piyasa Takip</span>
+    </div>
+  </div>
+
+  <!-- PARÇALI SATIŞ MODALI -->
+  <div id="sellModal" class="modal-overlay">
+    <div class="modal-content">
+       <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+         <h3 style="margin:0; color:#FFF; font-size:16px;">💸 Parçalı Satış Girişi</h3>
+         <button onclick="closeSellModal()" style="background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:0;">✖</button>
+       </div>
+       <p id="sellModalProductName" style="font-size:12px; color:var(--primary); font-weight:700; margin-bottom:15px; line-height:1.4;"></p>
+       <div id="sellRows" style="display:flex; flex-direction:column; margin-bottom:15px;"></div>
+       <button onclick="addSellRow()" style="width:100%; background:rgba(59,130,246,0.15); color:#93C5FD; border:1px dashed rgba(59,130,246,0.5); padding:10px; border-radius:10px; font-weight:700; cursor:pointer; margin-bottom:20px; font-size:13px;">+ Yeni Fiyat Satırı Ekle</button>
+       <button onclick="confirmSale()" style="width:100%; background:var(--success); color:#FFF; border:none; padding:14px; border-radius:12px; font-weight:800; font-size:14px; cursor:pointer; box-shadow:0 4px 15px var(--success-glow);">Onayla ve Portföyden Düş</button>
+    </div>
+  </div>
+
+  <!-- ÜRÜN PİYASA DETAY MODALI (GRAFİK + TÜM İLANLAR) -->
+  <div id="marketDetailModal" class="modal-overlay">
+    <div class="modal-content">
+       <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+         <div style="display:flex; gap:12px; align-items:center;">
+           <div id="mdIcon" class="product-icon" style="width:48px; height:48px; font-size:24px;"></div>
+           <div>
+             <h3 id="mdTitle" style="margin:0 0 4px 0; color:#FFF; font-size:15px; font-weight:800; line-height:1.3;"></h3>
+             <div id="mdSubtitle" style="font-size:11px; color:var(--text-muted);"></div>
+           </div>
+         </div>
+         <button onclick="closeMarketDetailModal()" style="background:rgba(255,255,255,0.1); border:none; border-radius:50%; width:30px; height:30px; color:#FFF; font-size:16px; cursor:pointer;">✖</button>
+       </div>
+
+       <!-- Özet Fiyatlar -->
+       <div style="display:flex; gap:8px; margin-bottom:16px;">
+          <div style="flex:1; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.3); padding:10px; border-radius:12px;">
+            <div style="font-size:10px; color:#34D399; font-weight:700; text-transform:uppercase;">Ortalama Piyasa</div>
+            <div id="mdAvgPrice" style="font-size:16px; font-weight:900; color:#FFF; margin-top:2px;">0 ₺</div>
+          </div>
+          <div style="flex:1; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); padding:10px; border-radius:12px;">
+            <div style="font-size:10px; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Fiyat Aralığı</div>
+            <div id="mdPriceRange" style="font-size:13px; font-weight:800; color:#BFDBFE; margin-top:4px;">-</div>
+          </div>
+       </div>
+
+       <!-- Fiyat Trend Grafiği -->
+       <div class="panel" style="padding:14px; margin-bottom:16px; background:rgba(0,0,0,0.3);">
+          <div class="panel-title" style="margin-bottom:8px;">
+            <span>İlan Fiyat Trendi</span>
+            <span style="font-size:9px; color:var(--primary);">Hatalı Uçuk Fiyatlar Elendi</span>
+          </div>
+          <div style="position:relative; height:160px;">
+            <canvas id="marketDetailChart"></canvas>
+          </div>
+       </div>
+
+       <!-- Hızlı Portföye Ekle Butonu -->
+       <button id="mdQuickAddBtn" style="width:100%; background:var(--primary); color:#FFF; border:none; padding:12px; border-radius:12px; font-weight:800; font-size:13px; cursor:pointer; margin-bottom:16px;">📥 Bu Ürünü Portföyüme Ekle</button>
+
+       <!-- İlan Listesi -->
+       <div style="font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase; margin-bottom:8px;">Tüm Tespit Edilen İlanlar</div>
+       <div id="mdListingList" style="display:flex; flex-direction:column; gap:8px; max-height:200px; overflow-y:auto;"></div>
+    </div>
+  </div>
+
+  <script>
+    let collection = JSON.parse(localStorage.getItem('pkmn_sealed_collection')) || [];
+    let uploadedChats = JSON.parse(localStorage.getItem('wa_chats_array')) || [];
+    let localMarketData = []; 
+    let currentCurrency = 'TRY';
+    let usdRate = 35.0; 
+    let portfolioChart = null;
+    let marketDetailChart = null;
+    let currentSellId = null;
+
+    const jpExclusiveSets = ["terastal", "vstar universe", "shiny treasure", "eevee heroes", "clay burst", "snow hazard", "ruler of the black flame", "wild force", "cyber judge", "crimson haze", "mask of change", "night wanderer", "stellar miracle", "paradigm trigger", "incandescent arcana", "lost abyss", "dark phantasma", "time gazer", "space juggler", "battle region", "star birth", "vmax climax", "shiny star v", "tag all stars"];
+    const cnExclusiveSets = ["gem pack", "nine color", "crossing the sky", "shadow of glory", "brave stars", "pinnacle clash", "dynamax clash", "sun & moon"];
+
+    async function initApp() {
+      refreshDatabase();
+      try {
+        let res = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+        let data = await res.json();
+        usdRate = data.rates.TRY;
+        document.getElementById('rateInfo').innerText = `1$ = ${usdRate.toFixed(2)}₺`;
+      } catch(e) { document.getElementById('rateInfo').innerText = `Kur: 35.0₺`; }
+      renderDashboard(); 
+      renderCards();
+      renderMarketList();
+    }
+
+    // SAYFA DEĞİŞTİRME (TAB SWITCH)
+    function switchTab(tabName) {
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.page-section').forEach(el => el.classList.remove('active'));
+
+      if (tabName === 'portfolio') {
+        document.getElementById('tabPortfolio').classList.add('active');
+        document.getElementById('pagePortfolio').classList.add('active');
+      } else if (tabName === 'market') {
+        document.getElementById('tabMarket').classList.add('active');
+        document.getElementById('pageMarket').classList.add('active');
+        renderMarketList();
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function toggleCurrency() { 
+      currentCurrency = currentCurrency === 'TRY' ? 'USD' : 'TRY'; 
+      renderDashboard(); 
+      renderCards();
+      renderMarketList();
+    }
+
+    function formatMoney(v) { 
+      if (isNaN(v)) return '0 ₺';
+      return currentCurrency === 'USD' ? (v/usdRate).toFixed(1) + ' $' : Math.round(v).toLocaleString('tr-TR') + ' ₺'; 
+    }
+
+    function getProductIcon(name) {
+      let n = name.toLowerCase();
+      if (n.includes('etb') || n.includes('elite trainer')) return '🍱';
+      if (n.includes('upc') || n.includes('ultra premium')) return '🧰';
+      if (n.includes('bundle')) return '🎒';
+      if (n.includes('box')) return '📦';
+      if (n.includes('pack') || n.includes('blister')) return '🧧';
+      if (n.includes('deck')) return '🃏';
+      if (n.includes('tin')) return '🥫';
+      return '✨';
+    }
+
+    function detectLanguage(text) {
+      if (!text) return "🇬🇧"; 
+      const lower = text.toLowerCase();
+      if (/(^|\s|\-|\.|\[)(çin|çince|chinese|cn)(\s|$|\-|\.|\])/i.test(lower)) return "🇨🇳";
+      if (/(^|\s|\-|\.|\[)(jap|jp|japon|japonca|japanese)(\s|$|\-|\.|\])/i.test(lower)) return "🇯🇵";
+      if (/(^|\s|\-|\.|\[)(kor|kore|korece|korean|kr)(\s|$|\-|\.|\])/i.test(lower)) return "🇰🇷";
+      if (/(^|\s|\-|\.|\[)(eng|ing|english|ingilizce|en|uk|us)(\s|$|\-|\.|\])/i.test(lower)) return "🇬🇧";
+      for (let set of jpExclusiveSets) { if (lower.includes(set)) return "🇯🇵"; }
+      for (let set of cnExclusiveSets) { if (lower.includes(set)) return "🇨🇳"; }
+      return "🇬🇧"; 
+    }
+
+    function extractCleanName(text) {
+      let clean = text.toLowerCase();
+      clean = clean.replace(/\b\d{1,2}[\s\.\/]\d{1,2}[\s\.\/]\d{2,4}[\s\-]*\d{1,2}[\s\.\:]\d{1,2}(?:[\s\.\:]\d{1,2})?\b/g, '');
+      clean = clean.replace(/\b(mustafa efe okan|mustafa|efe|okan|s öztürk|s ozturk|öztürk)\b/gi, '');
+      clean = clean.replace(/\d{1,3}(?:[\.\,\s]\d{3})*(?:[\.\,]\d+)?\s*(tl|₺|usd|\$|try)\b/gi, '');
+      clean = clean.replace(/\(?\d+\s*(x|adet)\)?/gi, '');
+      clean = clean.replace(/\b(görüntü|dahil|edilmedi|omitted|satılık|wts|satilik|acil|karışık|kartları|kart|mevcut|son|tekli|satılmıştır|satildi|satıcı|undefined|null)\b/gi, '');
+      clean = clean.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF])/g, '');
+      clean = clean.replace(/[\[\]\-\_\.\~\:\(\)\,]/g, ' ');
+      clean = clean.replace(/\b(?!151\b)\d+\b/g, '');
+      clean = clean.replace(/\s{2,}/g, ' ').trim();
+      clean = clean.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      clean = clean.replace(/\bEtb\b/gi, 'ETB').replace(/\bUpc\b/gi, 'UPC').replace(/\bVmax\b/gi, 'VMAX').replace(/\bVstar\b/gi, 'VSTAR').replace(/\bEx\b/gi, 'EX');
+      clean = clean.replace(/\bBooster Box\b/gi, 'Booster Box').replace(/\bBooster Pack\b/gi, 'Booster Pack').replace(/\bBooster Bundle\b/gi, 'Booster Bundle');
+      return clean.trim();
+    }
+
+    function refreshDatabase() {
+      localMarketData = uploadedChats.flatMap(c => c.data);
+      let cm = document.getElementById('chatManager'); cm.innerHTML = '';
+      uploadedChats.forEach(c => { cm.innerHTML += `<div class="chat-row"><span>📦 ${c.name} (${c.data.length})</span><button class="chat-del-btn" onclick="deleteChat(${c.id})">Sil</button></div>`; });
+      document.getElementById('dbStatus').innerText = uploadedChats.length > 0 ? `${localMarketData.length} ilan aktif.` : `Sohbet ZIP'i ekleyin.`;
+    }
+
+    function deleteChat(id) { 
+      uploadedChats = uploadedChats.filter(c => c.id !== id); 
+      localStorage.setItem('wa_chats_array', JSON.stringify(uploadedChats)); 
+      refreshDatabase(); 
+      renderMarketList();
+    }
+
+    async function parseWhatsAppZip(e) {
+      let file = e.target.files[0]; if(!file) return;
+      document.getElementById('dbStatus').innerText = "Yükleniyor...";
+      try {
+        let zip = new JSZip(); let zData = await zip.loadAsync(file);
+        let txt = "";
+        for(let fn of Object.keys(zData.files)) { if(fn.endsWith('.txt')) { txt = await zData.files[fn].async("string"); break; } }
+        let lines = txt.split('\n'); let data = [];
+        const waPrefixRegex = /^\[?\d{1,2}[\/\.]\d{1,2}[\/\.]\d{2,4}[, ]+\d{1,2}:\d{2}(:\d{2})?(?:\s*[A-Z]{2})?\]?\s*[\-~]?\s*([^:]+):/i;
+
+        lines.forEach(line => {
+          let low = line.toLowerCase();
+          if((low.includes('tl') || low.includes('₺') || low.includes('$')) && (low.includes('etb') || low.includes('bundle') || low.includes('booster') || low.includes('box') || low.includes('pack'))) {
+            let lister = "Bilinmiyor"; let pText = line;
+            const match = line.match(waPrefixRegex);
+            if (match && match[2]) { lister = match[2].trim(); pText = line.replace(match[0], '').trim(); }
+            if (lister === 'undefined' || lister === 'null') lister = "Bilinmiyor";
+            if (lister.length > 20) lister = lister.substring(0, 18) + '..';
+
+            let mPrice = pText.match(/(\d+(?:[\.\,]\d+)?(?:[\.\,]\d+)?)\s*(tl|\$|₺)/i);
+            if(mPrice) {
+              let numStr = mPrice[1];
+              let pMatch = numStr.match(/[\.\,]/g);
+              if (pMatch) {
+                  let parts = numStr.split(/[\.\,]/);
+                  let lastPart = parts.pop(); 
+                  if (lastPart.length === 3) numStr = numStr.replace(/[\.\,]/g, '');
+                  else numStr = parts.join('').replace(/[\.\,]/g, '') + '.' + lastPart;
+              }
+              let p = parseFloat(numStr);
+              if(low.includes('$')) p *= usdRate;
+              else if(p > 0 && p < 200) p *= 1000;
+              let name = extractCleanName(pText);
+              if(name.length > 2) data.push({ id: Date.now() + Math.random(), rawText: pText, product: name, lister: lister, price: p });
+            }
+          }
+        });
+        uploadedChats.push({ id: Date.now(), name: file.name.substring(0,12), data: data.reverse() });
+        localStorage.setItem('wa_chats_array', JSON.stringify(uploadedChats));
+        refreshDatabase();
+        renderMarketList();
+      } catch(err) { document.getElementById('dbStatus').innerText = "Hata oluştu!"; }
+    }
+
+    // --- PİYASA TAKİP SAYFASI (BORSA EKRANI) MANTIĞI ---
+    function getAggregatedMarketData() {
+      let groups = {};
+      localMarketData.forEach(item => {
+        let flag = detectLanguage(item.rawText || item.product);
+        let key = `${flag} ${item.product}`;
+        if (!groups[key]) {
+          groups[key] = {
+            pureName: item.product,
+            flag: flag,
+            fullName: key,
+            listings: []
+          };
+        }
+        groups[key].listings.push(item);
+      });
+
+      let result = [];
+      Object.values(groups).forEach(g => {
+        let allPrices = g.listings.map(l => l.price);
+        
+        // Son 4 farklı ilanı baz alarak ortalama hesapla
+        let recentListings = g.listings.slice(0, 4);
+        let recentAvg = recentListings.reduce((s, x) => s + x.price, 0) / recentListings.length;
+        
+        let minP = Math.min(...allPrices);
+        let maxP = Math.max(...allPrices);
+
+        result.push({
+          ...g,
+          avgPrice: Math.round(recentAvg),
+          minPrice: minP,
+          maxPrice: maxP,
+          count: g.listings.length
+        });
+      });
+
+      return result;
+    }
+
+    function renderMarketList() {
+      let listEl = document.getElementById('marketTickerList');
+      if (!listEl) return;
+      listEl.innerHTML = '';
+
+      let query = (document.getElementById('marketSearchInput')?.value || '').toLowerCase().trim();
+      let data = getAggregatedMarketData();
+
+      // Sıralama: En çok ilanı olanlar ve isim
+      data.sort((a, b) => b.count - a.count || a.fullName.localeCompare(b.fullName));
+
+      let filtered = data.filter(d => d.fullName.toLowerCase().includes(query));
+      document.getElementById('marketSummaryCount').innerText = `${filtered.length} Farklı Ürün Takipte`;
+
+      if (filtered.length === 0) {
+        listEl.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">Piyasada eşleşen ürün bulunamadı.<br>WhatsApp ZIP yüklediğinizden emin olun.</div>`;
+        return;
+      }
+
+      filtered.forEach(p => {
+        let card = document.createElement('div');
+        card.className = 'market-ticker-card';
+        card.onclick = () => openMarketDetail(p);
+        card.innerHTML = `
+          <div class="ticker-left">
+            <div class="product-icon">${getProductIcon(p.pureName)}</div>
+            <div>
+              <div style="font-weight:700; color:#FFF; font-size:14px;">${p.fullName}</div>
+              <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">
+                📦 ${p.count} İlan &bull; Aralık: ${formatMoney(p.minPrice)} - ${formatMoney(p.maxPrice)}
+              </div>
+            </div>
+          </div>
+          <div class="ticker-right">
+            <div style="font-size:16px; font-weight:900; color:var(--success);">${formatMoney(p.avgPrice)}</div>
+            <div style="font-size:10px; color:#93C5FD; font-weight:700; margin-top:2px;">Son 3-4 Ort. ➔</div>
+          </div>
+        `;
+        listEl.appendChild(card);
+      });
+    }
+
+    // --- AYKIRI DEĞER (OUTLIER) ELEME & PİYASA DETAY MODALI ---
+    function openMarketDetail(productData) {
+      document.getElementById('mdIcon').innerText = getProductIcon(productData.pureName);
+      document.getElementById('mdTitle').innerText = productData.fullName;
+      document.getElementById('mdSubtitle').innerText = `${productData.count} adet ilan tespit edildi`;
+      document.getElementById('mdAvgPrice').innerText = formatMoney(productData.avgPrice);
+      document.getElementById('mdPriceRange').innerText = `${formatMoney(productData.minPrice)} — ${formatMoney(productData.maxPrice)}`;
+
+      // Hızlı portföye ekleme butonu tetikleyicisi
+      document.getElementById('mdQuickAddBtn').onclick = () => {
+        closeMarketDetailModal();
+        switchTab('portfolio');
+        selectCard(productData.fullName, productData.avgPrice);
+      };
+
+      // İlan listesini bas
+      let listEl = document.getElementById('mdListingList');
+      listEl.innerHTML = '';
+      productData.listings.forEach(l => {
+        listEl.innerHTML += `
+          <div class="listing-item">
+            <div>
+              <div style="font-size:12px; font-weight:700; color:#FFF;">👤 ${l.lister}</div>
+              <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">${l.rawText.substring(0, 38)}...</div>
+            </div>
+            <div style="font-size:13px; font-weight:800; color:var(--success);">${formatMoney(l.price)}</div>
+          </div>
+        `;
+      });
+
+      // --- AYKIRI DEĞER (OUTLIER) ELEME & GRAFİK OLUŞTURMA ---
+      // Medyanı bul ve aşırı uçuk fiyatları (örn: 50 TL, 1.000.000 TL gibi parsing hatalarını) filtrele
+      let validListings = [...productData.listings].reverse();
+      let prices = validListings.map(x => x.price).sort((a,b) => a - b);
+      let median = prices[Math.floor(prices.length / 2)] || productData.avgPrice;
+
+      let cleanListings = validListings.filter(x => {
+        return x.price >= (median * 0.35) && x.price <= (median * 2.8);
+      });
+
+      if (cleanListings.length === 0) cleanListings = validListings;
+
+      let labels = cleanListings.map((_, i) => `#${i + 1}`);
+      let chartData = cleanListings.map(x => currentCurrency === 'USD' ? Math.round(x.price / usdRate) : x.price);
+
+      let ctx = document.getElementById('marketDetailChart').getContext('2d');
+      if (marketDetailChart) marketDetailChart.destroy();
+
+      marketDetailChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Fiyat (' + currentCurrency + ')',
+            data: chartData,
+            borderColor: '#3B82F6',
+            backgroundColor: 'rgba(59, 130, 246, 0.15)',
+            borderWidth: 2.5,
+            fill: true,
+            tension: 0.3,
+            pointRadius: 4,
+            pointBackgroundColor: '#60A5FA'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94A3B8', font: { size: 10 } } },
+            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94A3B8', font: { size: 10 } } }
+          }
+        }
+      });
+
+      document.getElementById('marketDetailModal').style.display = 'flex';
+    }
+
+    function closeMarketDetailModal() {
+      document.getElementById('marketDetailModal').style.display = 'none';
+      if (marketDetailChart) marketDetailChart.destroy();
+    }
+
+    // --- PORTFÖY VE ENvanter ARAMA ---
+    function searchLocal(e) {
+      let q = e.target.value.toLowerCase().trim();
+      let res = document.getElementById('searchResults');
+      if(q.length < 2) { res.style.display = 'none'; return; }
+      
+      let queryWords = q.split(' ').filter(w => w.length > 1);
+      let scored = localMarketData.map(item => {
+        let score = 0; let target = item.product.toLowerCase();
+        if (target.includes(q)) score += 10;
+        queryWords.forEach(word => { if (target.includes(word)) score += 3; });
+        return { ...item, score };
+      }).filter(item => item.score > 0);
+
+      scored.sort((a, b) => b.score - a.score);
+      let matches = scored.slice(0, 20);
+
+      if(matches.length === 0) { res.style.display = 'none'; return; }
+      res.innerHTML = '';
+      
+      let uniqueSellers = new Set(); let validPrices = [];
+      let commonFlag = detectLanguage(matches[0].rawText || matches[0].product); 
+
+      for (let m of matches) {
+        if (!uniqueSellers.has(m.lister)) { uniqueSellers.add(m.lister); validPrices.push(m.price); }
+      }
+
+      if (validPrices.length >= 1) {
+        let sum = validPrices.reduce((a, b) => a + b, 0);
+        let estimatedPrice = Math.round(sum / validPrices.length);
+        let pureName = `${commonFlag} ${matches[0].product}`;
+        
+        let estDiv = document.createElement('div'); estDiv.className = 'suggestion-item'; estDiv.style.backgroundColor = 'rgba(16, 185, 129, 0.15)'; estDiv.style.borderBottom = '2px solid rgba(16, 185, 129, 0.4)';
+        estDiv.onclick = () => selectCard(`${pureName}`, estimatedPrice);
+        estDiv.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center;"><div style="color:#34D399; font-weight:800; font-size:11px; text-transform:uppercase;">💡 Sistem Tahmini (Ortalama)</div><div style="color:#10B981; font-weight:900; font-size:15px;">${estimatedPrice.toLocaleString('tr-TR')} ₺</div></div><div style="display:flex; align-items:center; gap:8px; margin-top:8px;"><div class="product-icon" style="width:28px; height:28px; min-width:28px; font-size:14px;">${getProductIcon(matches[0].product)}</div><div><div style="color:#FFF; font-weight:700; font-size:14px;">${pureName}</div><div style="font-size:10px; color:#94A3B8; margin-top:2px;">${validPrices.length} ilan baz alındı.</div></div></div>`;
+        res.appendChild(estDiv);
+      }
+
+      matches.forEach(m => {
+        let flag = detectLanguage(m.rawText || m.product);
+        let displayName = `${flag} ${m.product}`;
+        let div = document.createElement('div'); div.className = 'suggestion-item';
+        div.onclick = () => selectCard(displayName, m.price);
+        div.innerHTML = `<div style="display:flex; align-items:center; gap:10px;"><div class="product-icon" style="width:32px; height:32px; min-width:32px; font-size:16px;">${getProductIcon(m.product)}</div><div style="flex:1;"><div style="display:flex;justify-content:space-between;font-size:13px;"><span style="color:#FFF;font-weight:600;">${flag} ${m.product}</span><span style="color:#10B981;font-weight:bold;">${m.price.toLocaleString('tr-TR')}₺</span></div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Satıcı: ${m.lister}</div></div></div>`;
+        res.appendChild(div);
+      });
+      res.style.display = 'block';
+    }
+
+    function selectCard(name, price) {
+      document.getElementById('cardName').value = name;
+      document.getElementById('currentPrice').value = price;
+      document.getElementById('cardName').style.display = 'none';
+      document.getElementById('selectedCardNameText').innerText = name;
+      document.getElementById('selectedCardChip').style.display = 'flex';
+      document.getElementById('searchResults').style.display = 'none';
+    }
+
+    function clearSelection() {
+      document.getElementById('cardName').value = '';
+      document.getElementById('cardName').style.display = 'block';
+      document.getElementById('selectedCardChip').style.display = 'none';
+      document.getElementById('currentPrice').value = '';
+    }
+
+    function saveAndRender() { 
+      localStorage.setItem('pkmn_sealed_collection', JSON.stringify(collection)); 
+      renderDashboard(); 
+      renderCards(); 
+    }
+
+    function addCard() {
+      let name = document.getElementById('cardName').value;
+      if(!name) name = document.getElementById('selectedCardNameText').innerText;
+      
+      let buy = parseFloat(document.getElementById('buyPrice').value) || 0;
+      let current = parseFloat(document.getElementById('currentPrice').value);
+      let cond = "Kusursuz (Sealed)";
+      let qty = parseInt(document.getElementById('qtyInput').value) || 1;
+      if(!name || isNaN(current)) { alert("Ürün adı ve piyasa değeri zorunludur."); return; }
+      
+      collection.unshift({ id: Date.now(), name, buy, current, cond, qty, status: 'active' });
+      saveAndRender(); clearSelection();
+      document.getElementById('buyPrice').value = ''; document.getElementById('qtyInput').value = '1'; document.getElementById('currentPrice').value = '';
+    }
+
+    function updateQty(id, d) { let c = collection.find(x => x.id === id); if(c) { c.qty += d; if(c.qty <= 0) deleteCard(id); else saveAndRender(); } }
+    function deleteCard(id) { collection = collection.filter(x => x.id !== id); saveAndRender(); }
+    
+    function openSellModal(id) {
+      currentSellId = id; let c = collection.find(x => x.id === id); if(!c) return;
+      document.getElementById('sellModalProductName').innerText = `📦 ${c.name} (Stok: ${c.qty} Adet)`;
+      document.getElementById('sellRows').innerHTML = `<div class="sell-row"><input type="number" class="text-input sell-qty" placeholder="Adet" max="${c.qty}" min="1" value="1" style="flex:0.4;"><input type="number" class="text-input sell-price" placeholder="Birim Satış Fiyatı (₺)" value="${c.current}" style="flex:1;"></div>`;
+      document.getElementById('sellModal').style.display = 'flex';
+    }
+
+    function addSellRow() {
+      let div = document.createElement('div'); div.className = 'sell-row';
+      div.innerHTML = `<input type="number" class="text-input sell-qty" placeholder="Adet" min="1" value="1" style="flex:0.4;"><input type="number" class="text-input sell-price" placeholder="Birim Satış Fiyatı (₺)" style="flex:1;"><button class="del-row-btn" onclick="this.parentElement.remove()">✖</button>`;
+      document.getElementById('sellRows').appendChild(div);
+    }
+
+    function closeSellModal() { document.getElementById('sellModal').style.display = 'none'; currentSellId = null; }
+
+    function confirmSale() {
+      let c = collection.find(x => x.id === currentSellId); if(!c) return;
+      let rows = document.querySelectorAll('.sell-row'); let totalSellQty = 0; let sales = []; let hasError = false;
+      rows.forEach(r => { let q = parseInt(r.querySelector('.sell-qty').value); let p = parseFloat(r.querySelector('.sell-price').value); if (isNaN(q) || q <= 0 || isNaN(p) || p < 0) hasError = true; else { totalSellQty += q; sales.push({qty: q, price: p}); } });
+      if(hasError) { alert("Lütfen tüm adet ve fiyat alanlarını geçerli doldurun."); return; }
+      if(totalSellQty > c.qty) { alert(`Hata: Girdiğiniz toplam adet (${totalSellQty}), mevcut stoktan (${c.qty}) fazla olamaz!`); return; }
+      
+      let d = new Date(); let dateStr = `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`;
+      c.qty -= totalSellQty;
+      sales.forEach(s => { collection.push({ id: Date.now() + Math.random(), name: c.name, buy: c.buy, current: c.current, cond: c.cond, qty: s.qty, status: 'sold', soldPrice: s.price, soldDate: dateStr }); });
+      if(c.qty <= 0) { collection = collection.filter(x => x.id !== currentSellId); }
+      closeSellModal(); saveAndRender();
+    }
+
+    function undoSell(id) { let c = collection.find(x => x.id === id); if(c) { c.status = 'active'; delete c.soldPrice; delete c.soldDate; saveAndRender(); } }
+    
+    function copyWTS(id) { let c = collection.find(x => x.id === id); if(c) { navigator.clipboard.writeText(`WTS 🟢\n\n📦 ${c.name}\n✨ Kondisyon: ${c.cond}\n💵 Fiyat: ${c.current.toLocaleString('tr-TR')} TL\n\nDM atabilirsiniz.`); alert("WTS metni kopyalandı!"); } }
+
+    function exportData() {
+      const dataToExport = { collection: collection, chats: uploadedChats };
+      const jsonStr = JSON.stringify(dataToExport);
+      const fileName = "mezzy_tcg_yedek.json";
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: "application/json" })] })) {
+        navigator.share({ files: [new File([blob], fileName, { type: "application/json" })], title: 'Mezzy TCG Yedek' }).catch(err => console.log(err));
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = fileName;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+      }
+    }
+
+    function importData(event) {
+      const file = event.target.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (data.collection) localStorage.setItem('pkmn_sealed_collection', JSON.stringify(data.collection));
+          if (data.chats) localStorage.setItem('wa_chats_array', JSON.stringify(data.chats));
+          alert("Veriler başarıyla yüklendi! Sayfa yenileniyor..."); location.reload();
+        } catch (err) { alert("Geçersiz yedek dosyası!"); }
+      }; reader.readAsText(file);
+    }
+
+    function renderDashboard() {
+      let activeCards = collection.filter(c => c.status !== 'sold');
+      let soldCards = collection.filter(c => c.status === 'sold');
+
+      let activeCost = activeCards.reduce((s, c) => s + (c.buy * c.qty), 0);
+      let soldCost = soldCards.reduce((s, c) => s + (c.buy * c.qty), 0);
+      let totalSpent = activeCost + soldCost; 
+
+      let activeVal = activeCards.reduce((s, c) => s + (c.current * c.qty), 0);
+      let expectedProfit = activeVal - activeCost;
+      let realizedProfit = soldCards.reduce((s, c) => s + ((c.soldPrice - c.buy) * c.qty), 0);
+      
+      document.getElementById('totalValue').innerText = formatMoney(activeVal);
+      document.getElementById('totalSpent').innerText = formatMoney(totalSpent);
+      document.getElementById('totalCost').innerText = formatMoney(activeCost);
+      
+      let expEl = document.getElementById('expectedProfit'); expEl.innerText = (expectedProfit >= 0 ? '+' : '') + formatMoney(expectedProfit); expEl.className = 'stat-value ' + (expectedProfit >= 0 ? 'green' : 'red');
+      let realEl = document.getElementById('realizedProfit'); realEl.innerText = (realizedProfit >= 0 ? '+' : '') + formatMoney(realizedProfit); realEl.className = 'stat-value ' + (realizedProfit >= 0 ? 'green' : 'red');
+
+      let productValues = {};
+      activeCards.forEach(c => { productValues[c.name] = (productValues[c.name] || 0) + (c.current * c.qty); });
+      let sortedProducts = Object.entries(productValues).sort((a,b) => b[1] - a[1]);
+      
+      let labels = []; let dataVals = [];
+      for(let i=0; i < Math.min(4, sortedProducts.length); i++) { labels.push(sortedProducts[i][0].substring(3,15) + '..'); dataVals.push(sortedProducts[i][1]); }
+      if(sortedProducts.length > 4) { let otherSum = sortedProducts.slice(4).reduce((s, p) => s + p[1], 0); labels.push('Diğerleri'); dataVals.push(otherSum); }
+
+      let ctx = document.getElementById('portfolioChart').getContext('2d');
+      if(portfolioChart) portfolioChart.destroy();
+      portfolioChart = new Chart(ctx, { type: 'doughnut', data: { labels: labels, datasets: [{ data: dataVals, backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#A855F7', '#64748B'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 9 }, color:'#94A3B8' } } }, cutout: '65%' } });
+    }
+
+    function renderCards() {
+      let activeList = document.getElementById('cardList'); activeList.innerHTML = '';
+      let soldList = document.getElementById('soldList'); soldList.innerHTML = '';
+      
+      let activeCards = collection.filter(c => c.status !== 'sold');
+      let soldCards = collection.filter(c => c.status === 'sold');
+
+      let sType = document.getElementById('sortFilter').value;
+      if(sType === 'profitDesc') activeCards.sort((a,b) => ((b.current-b.buy)*b.qty) - ((a.current-a.buy)*a.qty));
+      else if(sType === 'costDesc') activeCards.sort((a,b) => (b.buy*b.qty) - (a.buy*a.qty));
+      else if(sType === 'az') activeCards.sort((a,b) => a.name.localeCompare(b.name));
+
+      activeCards.forEach(c => {
+        let p = (c.current - c.buy) * c.qty;
+        let roi = c.buy > 0 ? `%${(((c.current - c.buy)/c.buy)*100).toFixed(0)}` : 'Trade';
+        activeList.innerHTML += `
+          <div class="panel card-item">
+            <div style="display:flex; gap:14px; align-items:center;">
+              <div class="product-icon">${getProductIcon(c.name)}</div>
+              <div style="flex:1;">
+                <h3 style="margin:0 0 4px 0; font-size:14px; font-weight:700;">${c.name}</h3>
+                <span class="roi-badge">ROI: ${roi}</span>
+                <div style="font-size:12px; color:var(--text-muted); margin-top:3px;">Birim Alış: <b>${formatMoney(c.buy)}</b> | Piyasa: <b style="color:var(--success);">${formatMoney(c.current)}</b></div>
+                <div class="${p >= 0 ? 'green' : 'red'}" style="font-size:12px; font-weight:800; margin-top:3px;">Beklenen K/Z: ${p >= 0 ? '+' : ''}${formatMoney(p)}</div>
+              </div>
+            </div>
+            <div class="card-actions">
+              <div class="qty-controls">
+                <button class="qty-btn" onclick="updateQty(${c.id}, -1)">-</button>
+                <span style="font-size:13px; font-weight:bold; width:28px; text-align:center;">${c.qty}</span>
+                <button class="qty-btn" onclick="updateQty(${c.id}, 1)">+</button>
+              </div>
+              <div style="display:flex; gap:6px;">
+                <button class="wts-btn" onclick="openSellModal(${c.id})" style="background:rgba(16, 185, 129, 0.15); color:#34D399; border-color:rgba(16,185,129,0.3);">Sat</button>
+                <button class="wts-btn" onclick="copyWTS(${c.id})">WTS</button>
+                <button class="delete-btn" onclick="deleteCard(${c.id})">Sil</button>
+              </div>
+            </div>
+          </div>`;
+      });
+
+      soldCards.forEach(c => {
+        let p = (c.soldPrice - c.buy) * c.qty;
+        let roi = c.buy > 0 ? `%${(((c.soldPrice - c.buy)/c.buy)*100).toFixed(0)}` : 'Trade';
+        soldList.innerHTML += `
+          <div class="panel card-item" style="border-color: rgba(16, 185, 129, 0.3);">
+            <div style="display:flex; gap:14px; align-items:center;">
+              <div class="product-icon" style="opacity:0.6;">${getProductIcon(c.name)}</div>
+              <div style="flex:1; opacity:0.85;">
+                <h3 style="margin:0 0 4px 0; font-size:14px; font-weight:700; text-decoration:line-through;">${c.name}</h3>
+                <span class="roi-badge" style="background:rgba(16,185,129,0.2); color:#34D399;">Satıldı (${c.qty} Adet)</span><span class="roi-badge">ROI: ${roi}</span>
+                <div style="font-size:12px; color:var(--text-muted); margin-top:3px;">Birim Alış: <b>${formatMoney(c.buy)}</b> | Satış: <b style="color:var(--success);">${formatMoney(c.soldPrice)}</b></div>
+                <div class="${p >= 0 ? 'green' : 'red'}" style="font-size:12px; font-weight:800; margin-top:3px;">Gerçekleşen Net K/Z: ${p >= 0 ? '+' : ''}${formatMoney(p)}</div>
+              </div>
+            </div>
+            <div class="card-actions" style="justify-content:flex-end;">
+              <div style="display:flex; gap:6px;">
+                <button class="wts-btn" onclick="undoSell(${c.id})" style="background:rgba(245, 158, 11, 0.15); color:#FCD34D; border-color:rgba(245,158,11,0.3);">İptal Et</button>
+                <button class="delete-btn" onclick="deleteCard(${c.id})">Sil</button>
+              </div>
+            </div>
+          </div>`;
+      });
+    }
+
+    initApp();
+  </script>
+</body>
+</html>
