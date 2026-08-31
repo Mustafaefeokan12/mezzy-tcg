@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Mezzy TCG Tracker</title>
+  
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Mezzy TCG">
+  <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/master-ball.png">
+  <meta name="theme-color" content="#020617">
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <style>
+    :root {
+      --bg-dark: #020617;
+      --card-bg: rgba(15, 23, 42, 0.75);
+      --primary: #3B82F6;
+      --primary-glow: rgba(59, 130, 246, 0.4);
+      --success: #10B981;
+      --success-glow: rgba(16, 185, 129, 0.3);
+      --danger: #EF4444;
+      --warning: #F59E0B;
+      --purple: #A855F7;
+      --text-main: #F8FAFC;
+      --text-muted: #94A3B8;
+      --glass-border: rgba(255, 255, 255, 0.08);
+    }
+    * { box-sizing: border-box; -webkit-touch-callout: none; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg-dark); color: var(--text-main); 
+      margin: 0; padding: 15px; padding-bottom: 95px;
+      min-height: 100vh; overflow-x: hidden;
+    }
+    .app-container { max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+    .header { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 5px; }
+    .header img { width: 36px; filter: drop-shadow(0 0 6px var(--primary-glow)); }
+    .header h1 { font-size: 22px; margin: 0; background: linear-gradient(90deg, #60A5FA, #A78BFA); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 800; }
+    
+    .panel { background: var(--card-bg); padding: 18px; border-radius: 18px; border: 1px solid var(--glass-border); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+    .panel-title { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+    .val-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+    .val { font-size: 30px; font-weight: 950; color: #FFF; text-shadow: 0 2px 15px var(--primary-glow); }
+    .currency-toggle { background: var(--primary); color: white; border: none; padding: 6px 12px; border-radius: 8px; font-weight: 700; cursor:pointer;}
+    .stats { display: flex; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--glass-border); padding-top: 14px; margin-bottom: 10px; }
+    .stat-box { flex: 1 1 45%; }
+    .stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; margin-bottom:4px;}
+    .stat-value { font-size: 15px; font-weight: 800; }
+    .green { color: var(--success); } .red { color: var(--danger); }
+    .chart-container { position: relative; height: 150px; border-top: 1px dashed var(--glass-border); padding-top: 14px; margin-top:5px; }
+    
+    .data-section { background: rgba(30, 58, 138, 0.25); border-color: rgba(59, 130, 246, 0.3); text-align: center; }
+    .chat-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+    .chat-row { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 10px; font-size: 12px; border: 1px solid var(--glass-border); color: #BFDBFE; }
+    .chat-del-btn { background: rgba(239, 68, 68, 0.2); color: #FCA5A5; border: none; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-size: 10px; cursor:pointer;}
+    
+    .file-btn { background: var(--primary); color: white; padding: 12px; border-radius: 10px; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; width: 100%; border: none; box-sizing: border-box; cursor:pointer;}
+    .db-status { font-size: 11px; color: #93C5FD; margin-top: 8px; }
+
+    input.text-input, select { width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: white; padding: 13px; border-radius: 12px; margin-bottom: 12px; font-size: 14px; outline: none; font-weight: 500; }
+    .selected-chip { display: flex; justify-content: space-between; align-items: center; background: rgba(16, 185, 129, 0.1) !important; border-color: rgba(16, 185, 129, 0.4) !important; padding: 12px 14px !important; margin-bottom: 12px; }
+    .clear-chip-btn { background: var(--danger); color: #FFF; border: none; border-radius: 50%; width: 26px; height: 26px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor:pointer;}
+    .row { display: flex; gap: 10px; }
+    button.add-btn { width: 100%; background: var(--success); color: white; border: none; padding: 15px; border-radius: 12px; font-size: 15px; font-weight: 800; box-shadow: 0 4px 12px var(--success-glow); cursor:pointer;}
+    
+    .search-results { position: absolute; top: 52px; left: 0; right: 0; background: #0F172A; border: 1px solid var(--primary); border-radius: 12px; max-height: 250px; overflow-y: auto; z-index: 100; display: none; box-shadow: 0 15px 30px rgba(0,0,0,0.8); }
+    .suggestion-item { padding: 12px 14px; border-bottom: 1px solid var(--glass-border); cursor:pointer;}
+    .suggestion-item:active { background: rgba(59, 130, 246, 0.15); }
+    
+    .card-list { display: flex; flex-direction: column; gap: 12px; }
+    .card-item { display: flex; flex-direction: column; gap: 10px; padding: 16px; margin-bottom: 0 !important; }
+    .roi-badge { background: rgba(168, 85, 247, 0.15); color: #D8B4FE; padding: 3px 7px; border-radius: 6px; font-size: 10px; font-weight: 800; display: inline-block; margin-bottom: 4px; border: 1px solid rgba(168,85,247,0.3); }
+    .card-actions { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 10px; border: 1px solid var(--glass-border); flex-wrap:wrap; gap:8px;}
+    .qty-controls { display: flex; align-items: center; gap: 10px; }
+    .qty-btn { background: rgba(255,255,255,0.1); border: none; color: white; width: 28px; height: 28px; border-radius: 6px; font-size: 16px; font-weight: bold; cursor:pointer;}
+    .wts-btn { background: rgba(59, 130, 246, 0.15); color: #93C5FD; border: 1px solid rgba(59,130,246,0.3); padding: 6px 10px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor:pointer;}
+    .delete-btn { background: transparent; color: #FCA5A5; border: 1px solid rgba(239,68,68,0.3); padding: 6px 10px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor:pointer;}
+
+    .product-icon { width:44px; height:44px; min-width:44px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; display:flex; justify-content:center; align-items:center; font-size:22px; }
+
+    .market-ticker-card { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: var(--card-bg); border: 1px solid var(--glass-border); border-radius: 16px; cursor: pointer; transition: all 0.2s ease; }
+    .market-ticker-card:active { transform: scale(0.98); background: rgba(30, 58, 138, 0.2); border-color: var(--primary); }
+    .ticker-left { display: flex; align-items: center; gap: 12px; flex: 1; }
+    .ticker-right { text-align: right; }
+
+    /* ALT NAVİGASYON */
+    .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 68px; background: rgba(2, 6, 23, 0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--glass-border); display: flex; justify-content: space-around; align-items: center; z-index: 1000; }
+    .nav-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--text-muted); font-size: 11px; font-weight: 600; cursor: pointer; flex: 1; padding: 8px 0; transition: color 0.2s; }
+    .nav-item.active { color: var(--primary); font-weight: 800; }
+    .nav-item span.icon { font-size: 20px; }
+
+    .page-section { display: none; opacity: 0; transform: translateY(6px); transition: opacity 0.25s ease, transform 0.25s ease; width: 100%; }
+    .page-section.active { display: flex; flex-direction: column; gap: 16px; opacity: 1; transform: translateY(0); }
+
+    /* MODAL TASARIMLARI */
+    .modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:9999; justify-content:center; align-items:center; backdrop-filter:blur(8px); }
+    .modal-content { width:100%; max-width:500px; max-height: 90vh; overflow-y: auto; background: #0B132B; border: 1px solid rgba(59,130,246,0.3); padding: 22px; border-radius: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.9); }
+    .modal-overlay.bottom-modal { align-items:flex-end; }
+    .modal-overlay.bottom-modal .modal-content { border-radius:0; border-top-left-radius: 24px; border-top-right-radius: 24px; }
+    
+    .sell-row { display:flex; gap:10px; margin-bottom:10px; align-items:center; }
+    .sell-row .text-input { margin-bottom:0; padding:12px; font-size:13px; }
+    .del-row-btn { background:var(--danger); border:none; border-radius:10px; color:#fff; font-weight:bold; height:42px; width:42px; cursor:pointer; display:flex; justify-content:center; align-items:center; }
+    
+    .listing-item { background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); padding: 10px 14px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;}
+
+    /* --- BINDER (KOLEKSİYON DEFTERİ) STİLLERİ --- */
+    .binder-wrapper { display: flex; flex-direction: column; align-items: center; width: 100%; overflow: hidden; position: relative; touch-action: pan-y; padding: 10px 0; min-height: 350px;}
+    .binder-spread { display: flex; width: 100%; max-width: 800px; gap: 6px; transform-origin: top center; transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); }
+    .binder-wrapper.zoomed .binder-spread { transform: scale(1.7); z-index: 50; }
+    
+    .binder-page { flex: 1; background: #1e293b; border-radius: 6px; border: 2px solid #334155; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 4px; padding: 8px; box-shadow: inset 0 0 15px rgba(0,0,0,0.6); position: relative; }
+    .binder-page.left-page { box-shadow: inset -15px 0 20px -5px rgba(0,0,0,0.8); border-right: 1px solid #0f172a; border-top-right-radius: 2px; border-bottom-right-radius: 2px; }
+    .binder-page.right-page { box-shadow: inset 15px 0 20px -5px rgba(0,0,0,0.8); border-left: 1px solid #0f172a; border-top-left-radius: 2px; border-bottom-left-radius: 2px; }
+    
+    .binder-slot { width: 100%; aspect-ratio: 63 / 88; background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.15); border-radius: 4px; display: flex; justify-content: center; align-items: center; cursor: pointer; position: relative; overflow: hidden; transition: all 0.2s; }
+    .binder-slot:hover { border-color: rgba(255,255,255,0.4); background: rgba(255,255,255,0.08); }
+    .binder-slot .empty-icon { font-size: 24px; color: rgba(255,255,255,0.2); font-weight: 100; }
+    .binder-slot img.card-img { width: 100%; height: 100%; object-fit: cover; border-radius: 3px; }
+
+    /* 3D Holo Modal Stilleri */
+    #holoCardContainer { perspective: 1000px; display: flex; justify-content: center; align-items: center; width: 100%; height: 50vh; margin-top: 10px;}
+    .card-3d-wrapper { width: 260px; aspect-ratio: 63 / 88; position: relative; transform-style: preserve-3d; transition: transform 0.1s ease-out; box-shadow: 0 20px 50px rgba(0,0,0,0.8); border-radius: 12px; }
+    .card-3d-wrapper img { width: 100%; height: 100%; object-fit: cover; border-radius: 12px; display: block; }
+    .holo-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; border-radius: 12px; background: linear-gradient(115deg, transparent 20%, rgba(255, 215, 0, 0.35) 25%, rgba(255, 255, 255, 0.6) 28%, rgba(0, 255, 255, 0.35) 31%, transparent 36%); background-size: 300% 300%; mix-blend-mode: color-dodge; pointer-events: none; transition: background-position 0.1s ease-out; background-position: 50% 50%; opacity: 0; }
+
+    .page-indicator { text-align: center; color: var(--text-muted); font-size: 12px; margin-top: 15px; font-weight: 700; letter-spacing: 2px; }
+    .zoom-btn { background: rgba(59, 130, 246, 0.2); border: 1px solid var(--primary); color: #93C5FD; padding: 8px 16px; border-radius: 20px; font-size: 12px; font-weight: bold; margin: 0 auto; display: block; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/master-ball.png" alt="Pokeball">
+      <h1>Mezzy TCG Tracker</h1>
+    </div>
+
+    <!-- SAYFA 1: PORTFÖY & ENVANTER -->
+    <div id="pagePortfolio" class="page-section active">
+      <div class="panel" style="background: rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.3);">
+        <div class="panel-title" style="color: #D8B4FE;">🔄 Cihazlar Arası Aktarım & Yedek</div>
+        <div style="display:flex; gap:10px; margin-top:4px;">
+          <button onclick="exportData()" class="file-btn" style="flex:1; background:rgba(59, 130, 246, 0.2); border:1px solid var(--primary); color:#93C5FD;">📤 Yedeği Paylaş</button>
+          <label class="file-btn" style="flex:1; background:rgba(16, 185, 129, 0.2); border:1px solid var(--success); color:#34D399; cursor:pointer;">
+            📥 Yedeği Yükle
+            <input type="file" accept=".json" style="display:none;" onchange="importData(event)">
+          </label>
+        </div>
+      </div>
+
+      <div class="panel data-section">
+        <div class="panel-title" style="color:#FFF; justify-content:center;">WhatsApp Veritabanı</div>
+        <div id="chatManager" class="chat-list"></div>
+        <div style="position:relative;">
+          <label class="file-btn" for="fileInput">📁 WhatsApp ZIP Ekle</label>
+          <input type="file" accept=".zip" id="fileInput" style="display:none;" onchange="parseWhatsAppZip(event)">
+        </div>
+        <div class="db-status" id="dbStatus">Sistem Hazır</div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">
+          <span>Portföy Finansal Özeti</span>
+          <span id="rateInfo" style="font-size: 9px; color: var(--primary);">Kur Çekiliyor...</span>
+        </div>
+        <div class="val-container">
+          <div class="val" id="totalValue">0 ₺</div>
+          <button class="currency-toggle" onclick="toggleCurrency()">₺ / $</button>
+        </div>
+        <div class="stats">
+          <div class="stat-box"><div class="stat-label">Toplam Harcanan</div><div class="stat-value" id="totalSpent">0 ₺</div></div>
+          <div class="stat-box" style="text-align: right;"><div class="stat-label">Aktif Maliyet (Stok)</div><div class="stat-value" id="totalCost">0 ₺</div></div>
+          <div class="stat-box"><div class="stat-label">Beklenen Kâr (Aktif)</div><div class="stat-value" id="expectedProfit">+0 ₺</div></div>
+          <div class="stat-box" style="text-align: right;"><div class="stat-label">Gerçekleşen Kâr (Net)</div><div class="stat-value" id="realizedProfit">+0 ₺</div></div>
+        </div>
+        <div class="chart-container"><canvas id="portfolioChart"></canvas></div>
+      </div>
+
+      <div class="panel">
+        <div style="position:relative; margin-bottom:12px;">
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="cardName" class="text-input" placeholder="🔍 Ürün ara (örn: 151, First Partner)..." oninput="searchLocal(event)" autocomplete="off" style="margin-bottom:0; flex:1;">
+            <button class="file-btn" style="width:52px; background:rgba(16, 185, 129, 0.2); border:1px solid rgba(16, 185, 129, 0.4); color:#34D399; font-size:26px; padding:0; border-radius:12px; cursor:pointer;" onclick="openManualAddModal()">+</button>
+          </div>
+          <div class="search-results" id="searchResults"></div>
+        </div>
+        
+        <div id="selectedCardChip" class="text-input selected-chip" style="display:none;">
+          <span id="selectedCardNameText" style="font-weight:600; color:#34D399; font-size:13px; flex:1; line-height:1.4;"></span>
+          <button class="clear-chip-btn" onclick="clearSelection()">✖</button>
+        </div>
+
+        <div class="row" style="margin-bottom:12px;">
+          <input type="number" id="buyPrice" class="text-input" placeholder="Birim Alış (₺)" style="flex:1; margin-bottom:0;">
+          <input type="number" id="currentPrice" class="text-input" placeholder="Piyasa Değeri (₺)" style="flex:1; margin-bottom:0;">
+        </div>
+        <div class="row">
+          <input type="number" id="qtyInput" class="text-input" value="1" min="1" placeholder="Adet" style="flex:1;">
+        </div>
+        <button class="add-btn" onclick="addCard()">Portföye Ekle</button>
+      </div>
+
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <span style="font-size:12px; font-weight:bold; color:var(--text-muted);">Aktif Envanter</span>
+          <select id="sortFilter" style="background:rgba(0,0,0,0.4); border:1px solid var(--glass-border); color:#FFF; padding:6px 10px; border-radius:8px; font-size:11px; outline:none;" onchange="renderCards()">
+            <option value="newest">En Yeni</option>
+            <option value="profitDesc">Kârı Yüksek</option>
+            <option value="costDesc">Maliyeti Yüksek</option>
+            <option value="az">A-Z</option>
+          </select>
+        </div>
+        <div class="card-list" id="cardList"></div>
+      </div>
+
+      <div style="margin-top: 20px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <span style="font-size:12px; font-weight:bold; color:var(--text-muted);">Satılanlar (Geçmiş)</span>
+        </div>
+        <div class="card-list" id="soldList"></div>
+      </div>
+    </div>
+
+    <!-- SAYFA 2: PİYASA TAKİBİ -->
+    <div id="pageMarket" class="page-section">
+      <div class="panel" style="background: linear-gradient(135deg, rgba(30,58,138,0.3), rgba(15,23,42,0.8)); border-color: rgba(59,130,246,0.3);">
+        <div class="panel-title" style="color: #60A5FA;">📊 TCG Piyasa Terminali</div>
+        <div style="font-size: 13px; color: var(--text-muted); line-height: 1.4;">
+          WhatsApp gruplarındaki ilanlar algoritmayla taranarak birleştirilmiş borsa listesidir. Detay ve fiyat grafiği için ürüne dokunun.
+        </div>
+      </div>
+
+      <div style="position:relative;">
+        <input type="text" id="marketSearchInput" class="text-input" placeholder="🔍 Piyasa terminalinde ara..." oninput="renderMarketList()" style="margin-bottom:6px;">
+      </div>
+
+      <div id="marketSummaryCount" style="font-size:11px; color:var(--text-muted); font-weight:700; padding: 0 4px;">0 Farklı Ürün Takipte</div>
+      <div id="marketTickerList" style="display:flex; flex-direction:column; gap:10px;"></div>
+    </div>
+
+    <!-- SAYFA 3: BINDER (KOLEKSİYON DEFTERİ) -->
+    <div id="pageBinder" class="page-section">
+      <div class="panel" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(15,23,42,0.8)); border-color: rgba(16, 185, 129, 0.3);">
+        <div class="panel-title" style="color: #34D399;">📓 Dijital Binder</div>
+        <div style="font-size: 12px; color: var(--text-muted); line-height: 1.4;">
+          Fiziksel kart albümünüz. Sayfaları çevirmek için albümü <b>sağa/sola kaydırın.</b> Büyütmek için albüme <b>Çift Tıklayın</b> veya <b>Zoom</b> butonuna basın. Kart eklemek için boş yuvalara dokunun.
+        </div>
+      </div>
+
+      <button class="zoom-btn" onclick="toggleBinderZoom()">🔍 Zoom Değiştir</button>
+
+      <!-- BINDER SPREAD ALANI -->
+      <div class="binder-wrapper" id="binderWrapper">
+        <div class="binder-spread" id="binderSpread">
+          <!-- JS ile Render Edilecek Sayfalar Buraya Düşecek -->
+        </div>
+      </div>
+      <div class="page-indicator" id="binderPageIndicator">SAYFA 1 - 2</div>
+    </div>
+
+  </div>
+
+  <!-- ALT MENÜ -->
+  <div class="bottom-nav">
+    <div id="tabPortfolio" class="nav-item active" onclick="switchTab('portfolio')">
+      <span class="icon">📦</span><span>Portföy</span>
+    </div>
+    <div id="tabMarket" class="nav-item" onclick="switchTab('market')">
+      <span class="icon">📈</span><span>Piyasa</span>
+    </div>
+    <div id="tabBinder" class="nav-item" onclick="switchTab('binder')">
+      <span class="icon">📓</span><span>Binder</span>
+    </div>
+  </div>
+
+  <!-- BINDER KART EKLEME MODALI -->
+  <div id="binderAddModal" class="modal-overlay">
+    <div class="modal-content">
+       <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+         <h3 style="margin:0; color:#FFF; font-size:16px;">➕ Binder'a Kart Ekle</h3>
+         <button onclick="closeBinderAddModal()" style="background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:0;">✖</button>
+       </div>
+       <p style="font-size:11px; color:var(--text-muted); margin-bottom:15px;">Yuva: Sayfa <span id="lblAddPage"></span>, Slot <span id="lblAddSlot"></span></p>
+       
+       <input type="text" id="bCardName" class="text-input" placeholder="Kart Adı (Örn: Charizard ex)">
+       <input type="text" id="bCardCode" class="text-input" placeholder="Kart Kodu (Örn: MEW 199/165)">
+       
+       <label class="file-btn" style="background:rgba(59, 130, 246, 0.2); border:1px dashed var(--primary); color:#93C5FD; margin-bottom:15px;">
+         📸 Kart Fotoğrafı Yükle / Çek
+         <input type="file" accept="image/*" id="bCardImage" style="display:none;" onchange="previewBinderImage(event)">
+       </label>
+       
+       <div id="bImagePreview" style="display:none; width:120px; height:168px; margin:0 auto 15px auto; border-radius:8px; overflow:hidden; border:2px solid var(--success);">
+         <img id="bPreviewImg" src="" style="width:100%; height:100%; object-fit:cover;">
+       </div>
+       
+       <button onclick="saveBinderCard()" style="width:100%; background:var(--success); color:#FFF; border:none; padding:14px; border-radius:12px; font-weight:800; font-size:14px; cursor:pointer; box-shadow:0 4px 15px var(--success-glow);">Yuvaya Kaydet</button>
+    </div>
+  </div>
+
+  <!-- BINDER 3D GÖRÜNTÜLEME MODALI -->
+  <div id="binderViewModal" class="modal-overlay" style="align-items:center; background:rgba(0,0,0,0.95);">
+    <div style="width:100%; display:flex; flex-direction:column; align-items:center;">
+       <div style="width:100%; max-width:400px; display:flex; justify-content:space-between; padding:0 20px; margin-bottom:20px;">
+         <div style="color:#FFF;">
+           <div id="bViewName" style="font-size:20px; font-weight:900; text-shadow:0 2px 10px rgba(0,0,0,0.8);"></div>
+           <div id="bViewCode" style="font-size:13px; color:#94A3B8; font-weight:700;"></div>
+         </div>
+         <button onclick="closeBinderViewModal()" style="background:rgba(255,255,255,0.1); border:none; border-radius:50%; width:36px; height:36px; color:#FFF; font-size:18px; cursor:pointer;">✖</button>
+       </div>
+       
+       <!-- 3D HOLO KART ALANI -->
+       <div id="holoCardContainer">
+         <div class="card-3d-wrapper" id="holoCardWrapper">
+           <img id="holoCardImg" src="">
+           <div class="holo-overlay" id="holoOverlay"></div>
+         </div>
+       </div>
+
+       <button id="bRemoveBtn" style="background:rgba(239, 68, 68, 0.2); border:1px solid rgba(239, 68, 68, 0.4); color:#FCA5A5; padding:10px 20px; border-radius:12px; font-weight:800; font-size:14px; margin-top:30px; cursor:pointer;" onclick="removeBinderCard()">🗑️ Kartı Binder'dan Sil</button>
+    </div>
+  </div>
+
+  <!-- STANDART MODALLAR (Özel Ekleme, Satış, Piyasa Detayı) -->
+  <div id="manualAddModal" class="modal-overlay">
+    <div class="modal-content">
+       <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+         <h3 style="margin:0; color:#FFF; font-size:16px;">➕ Özel Ürün Ekle</h3>
+         <button onclick="closeManualAddModal()" style="background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:0;">✖</button>
+       </div>
+       <p style="font-size:11px; color:var(--text-muted); margin-top:0; margin-bottom:15px;">Listede görünmeyen kendi özel ürününüzü stoklarınıza ekleyebilirsiniz.</p>
+       <input type="text" id="manName" class="text-input" placeholder="Ürün Adı (örn: First Partner 1 Collection)">
+       <div class="row" style="margin-bottom:12px;">
+         <input type="number" id="manBuy" class="text-input" placeholder="Alış (₺)" style="margin-bottom:0; flex:1;">
+         <input type="number" id="manMarket" class="text-input" placeholder="Piyasa (₺)" style="margin-bottom:0; flex:1;">
+       </div>
+       <input type="number" id="manQty" class="text-input" placeholder="Adet" value="1" min="1">
+       <button onclick="confirmManualAdd()" style="width:100%; background:var(--success); color:#FFF; border:none; padding:14px; border-radius:12px; font-weight:800; cursor:pointer; margin-top:10px;">Portföye Ekle</button>
+    </div>
+  </div>
+
+  <div id="sellModal" class="modal-overlay bottom-modal">
+    <div class="modal-content">
+       <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+         <h3 style="margin:0; color:#FFF; font-size:16px;">💸 Parçalı Satış Girişi</h3>
+         <button onclick="closeSellModal()" style="background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:0;">✖</button>
+       </div>
+       <p id="sellModalProductName" style="font-size:12px; color:var(--primary); font-weight:700; margin-bottom:15px; line-height:1.4;"></p>
+       <div id="sellRows" style="display:flex; flex-direction:column; margin-bottom:15px;"></div>
+       <button onclick="addSellRow()" style="width:100%; background:rgba(59,130,246,0.15); color:#93C5FD; border:1px dashed rgba(59,130,246,0.5); padding:10px; border-radius:10px; font-weight:700; cursor:pointer; margin-bottom:20px; font-size:13px;">+ Yeni Fiyat Satırı Ekle</button>
+       <button onclick="confirmSale()" style="width:100%; background:var(--success); color:#FFF; border:none; padding:14px; border-radius:12px; font-weight:800; cursor:pointer;">Onayla ve Düş</button>
+    </div>
+  </div>
+
+  <div id="marketDetailModal" class="modal-overlay bottom-modal">
+    <div class="modal-content">
+       <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+         <div style="display:flex; gap:12px; align-items:center;">
+           <div id="mdIcon" class="product-icon" style="width:48px; height:48px; font-size:24px;"></div>
+           <div>
+             <h3 id="mdTitle" style="margin:0 0 4px 0; color:#FFF; font-size:15px; font-weight:800; line-height:1.3;"></h3>
+             <div id="mdSubtitle" style="font-size:11px; color:var(--text-muted);"></div>
+           </div>
+         </div>
+         <button onclick="closeMarketDetailModal()" style="background:rgba(255,255,255,0.1); border:none; border-radius:50%; width:30px; height:30px; color:#FFF; font-size:16px; cursor:pointer;">✖</button>
+       </div>
+       <div style="display:flex; gap:8px; margin-bottom:16px;">
+          <div style="flex:1; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.3); padding:10px; border-radius:12px;">
+            <div style="font-size:10px; color:#34D399; font-weight:700; text-transform:uppercase;">Ortalama Piyasa</div>
+            <div id="mdAvgPrice" style="font-size:16px; font-weight:900; color:#FFF; margin-top:2px;">0 ₺</div>
+          </div>
+          <div style="flex:1; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); padding:10px; border-radius:12px;">
+            <div style="font-size:10px; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Fiyat Aralığı</div>
+            <div id="mdPriceRange" style="font-size:13px; font-weight:800; color:#BFDBFE; margin-top:4px;">-</div>
+          </div>
+       </div>
+       <div class="panel" style="padding:14px; margin-bottom:16px; background:rgba(0,0,0,0.3);">
+          <div class="panel-title" style="margin-bottom:8px;"><span>İlan Fiyat Trendi</span><span style="font-size:9px; color:var(--primary);">Aykırı Fiyatlar Elendi</span></div>
+          <div style="position:relative; height:160px;"><canvas id="marketDetailChart"></canvas></div>
+       </div>
+       <button id="mdQuickAddBtn" style="width:100%; background:var(--primary); color:#FFF; border:none; padding:12px; border-radius:12px; font-weight:800; cursor:pointer; margin-bottom:16px;">📥 Bu Ürünü Portföyüme Ekle</button>
+       <div style="font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase; margin-bottom:8px;">Son İlanlar</div>
+       <div id="mdListingList" style="display:flex; flex-direction:column; gap:8px; max-height:200px; overflow-y:auto;"></div>
+    </div>
+  </div>
+
+  <script>
+    // --- TEKİL VE TEMİZ JAVASCRIPT YÖNETİMİ ---
+    
+    // Veri Modelleri
+    let collection = JSON.parse(localStorage.getItem('pkmn_sealed_collection')) || [];
+    let uploadedChats = JSON.parse(localStorage.getItem('wa_chats_array')) || [];
+    let binderData = JSON.parse(localStorage.getItem('pkmn_binder_data')) || {}; 
+    let localMarketData = []; 
+    let currentCurrency = 'TRY';
+    let usdRate = 35.0; 
+    let portfolioChart = null;
+    let marketDetailChart = null;
+    let currentSellId = null;
+
+    // Binder Kontrol Değişkenleri
+    let currentSpread = 0; 
+    let totalSpreads = 1; 
+    let currentAddSlot = null; 
+    let currentBase64Image = null;
+    let touchStartX = 0;
+    let touchEndX = 0;
+    const pageTurnAudio = new Audio('https://actions.google.com/sounds/v1/foley/swipe_whoosh.ogg');
+    pageTurnAudio.volume = 0.5;
+
+    const jpExclusiveSets = ["terastal", "vstar universe", "shiny treasure", "eevee heroes", "clay burst", "snow hazard", "ruler of the black flame", "wild force", "cyber judge", "crimson haze", "mask of change", "night wanderer", "stellar miracle", "paradigm trigger", "incandescent arcana", "lost abyss", "dark phantasma", "time gazer", "space juggler", "battle region", "star birth", "vmax climax", "shiny star v", "tag all stars"];
+    const cnExclusiveSets = ["gem pack", "nine color", "crossing the sky", "shadow of glory", "brave stars", "pinnacle clash", "dynamax clash", "sun & moon"];
+
+    async function initApp() {
+      refreshDatabase();
+      try {
+        let res = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+        let data = await res.json();
+        usdRate = data.rates.TRY;
+        document.getElementById('rateInfo').innerText = `1$ = ${usdRate.toFixed(2)}₺`;
+      } catch(e) { document.getElementById('rateInfo').innerText = `Kur: 35.0₺`; }
+      renderDashboard(); 
+      renderCards();
+      renderMarketList();
+      initBinder(); // Binder verilerini başlat ve ekrana çiz
+    }
+
+    // --- BINDER (DİJİTAL ALBÜM) FONKSİYONLARI ---
+    function initBinder() {
+      let maxPage = 2; 
+      Object.keys(binderData).forEach(key => {
+         let pNum = parseInt(key.split('_')[1]);
+         if(pNum > maxPage) maxPage = pNum;
+      });
+      // Spread sayısını hesapla (Her spread 2 sayfadan oluşur)
+      totalSpreads = Math.ceil(maxPage / 2);
+      totalSpreads += 1; // Kullanıcının her zaman ekleyebileceği boş bir sayfa olsun
+      
+      renderBinderSpread();
+      setupBinderSwipe();
+      setupHoloEffect();
+    }
+
+    function renderBinderSpread() {
+      const spreadEl = document.getElementById('binderSpread');
+      if(!spreadEl) return;
+      spreadEl.innerHTML = '';
+      
+      let leftPageNum = (currentSpread * 2) + 1;
+      let rightPageNum = (currentSpread * 2) + 2;
+
+      let leftPageHTML = `<div class="binder-page left-page">`;
+      for(let i=1; i<=9; i++) {
+        let slotKey = `page_${leftPageNum}_slot_${i}`;
+        leftPageHTML += createSlotHTML(slotKey);
+      }
+      leftPageHTML += `</div>`;
+
+      let rightPageHTML = `<div class="binder-page right-page">`;
+      for(let i=1; i<=9; i++) {
+        let slotKey = `page_${rightPageNum}_slot_${i}`;
+        rightPageHTML += createSlotHTML(slotKey);
+      }
+      rightPageHTML += `</div>`;
+
+      spreadEl.innerHTML = leftPageHTML + rightPageHTML;
+      document.getElementById('binderPageIndicator').innerText = `SAYFA ${leftPageNum} - ${rightPageNum}`;
+    }
+
+    function createSlotHTML(slotKey) {
+       let card = binderData[slotKey];
+       if(card) {
+          return `<div class="binder-slot" onclick="openBinderViewModal('${slotKey}')"><img src="${card.image}" class="card-img"></div>`;
+       } else {
+          return `<div class="binder-slot" onclick="openBinderAddModal('${slotKey}')"><span class="empty-icon">+</span></div>`;
+       }
+    }
+
+    function toggleBinderZoom() {
+      let wrapper = document.getElementById('binderWrapper');
+      wrapper.classList.toggle('zoomed');
+    }
+
+    function setupBinderSwipe() {
+      const bCont = document.getElementById('binderContainer');
+      if(!bCont) return;
+
+      bCont.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX; });
+      bCont.addEventListener('touchend', e => {
+        touchEndX = e.changedTouches[0].screenX;
+        handleSwipe();
+      });
+
+      // Çift tıkla Zoom efekti
+      let lastTap = 0;
+      bCont.addEventListener('touchend', function(e) {
+          let currentTime = new Date().getTime();
+          let tapLength = currentTime - lastTap;
+          if (tapLength < 300 && tapLength > 0) {
+              toggleBinderZoom();
+              e.preventDefault();
+          }
+          lastTap = currentTime;
+      });
+    }
+
+    function handleSwipe() {
+       let threshold = 50;
+       if (touchEndX < touchStartX - threshold) { // Sola Kaydır -> İleri
+          if(currentSpread < totalSpreads - 1) { 
+             currentSpread++; playPageTurn(); renderBinderSpread(); 
+          }
+       }
+       if (touchEndX > touchStartX + threshold) { // Sağa Kaydır -> Geri
+          if(currentSpread > 0) { 
+             currentSpread--; playPageTurn(); renderBinderSpread(); 
+          }
+       }
+    }
+
+    function playPageTurn() {
+      pageTurnAudio.currentTime = 0;
+      pageTurnAudio.play().catch(e => console.log("Ses oynatılamadı:", e));
+    }
+
+    function openBinderAddModal(slotKey) {
+       currentAddSlot = slotKey;
+       let parts = slotKey.split('_');
+       document.getElementById('lblAddPage').innerText = parts[1];
+       document.getElementById('lblAddSlot').innerText = parts[3];
+       document.getElementById('bCardName').value = '';
+       document.getElementById('bCardCode').value = '';
+       document.getElementById('bImagePreview').style.display = 'none';
+       document.getElementById('bPreviewImg').src = '';
+       currentBase64Image = null;
+       document.getElementById('binderAddModal').style.display = 'flex';
+    }
+
+    function closeBinderAddModal() { document.getElementById('binderAddModal').style.display = 'none'; }
+
+    // Görsel Sıkıştırma (Tarayıcı hafızasını doldurmamak için)
+    function previewBinderImage(event) {
+       const file = event.target.files[0];
+       if(!file) return;
+       const reader = new FileReader();
+       reader.onload = function(e) {
+          const img = new Image();
+          img.onload = function() {
+             const canvas = document.createElement('canvas');
+             const ctx = canvas.getContext('2d');
+             const MAX_WIDTH = 500; // Yüksek çözünürlük korunur
+             let scaleSize = MAX_WIDTH / img.width;
+             if(scaleSize > 1) scaleSize = 1; 
+             canvas.width = img.width * scaleSize; canvas.height = img.height * scaleSize;
+             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+             
+             currentBase64Image = canvas.toDataURL('image/jpeg', 0.80);
+             document.getElementById('bPreviewImg').src = currentBase64Image;
+             document.getElementById('bImagePreview').style.display = 'block';
+          }
+          img.src = e.target.result;
+       }
+       reader.readAsDataURL(file);
+    }
+
+    function saveBinderCard() {
+       let name = document.getElementById('bCardName').value.trim();
+       let code = document.getElementById('bCardCode').value.trim();
+       if(!name || !currentBase64Image) { alert("Lütfen kart adı girin ve fotoğraf yükleyin!"); return; }
+       binderData[currentAddSlot] = { name: name, code: code, image: currentBase64Image };
+       localStorage.setItem('pkmn_binder_data', JSON.stringify(binderData));
+       closeBinderAddModal(); initBinder();
+    }
+
+    let currentViewSlot = null;
+    function openBinderViewModal(slotKey) {
+       let card = binderData[slotKey];
+       if(!card) return;
+       currentViewSlot = slotKey;
+       document.getElementById('bViewName').innerText = card.name;
+       document.getElementById('bViewCode').innerText = card.code || '';
+       document.getElementById('holoCardImg').src = card.image;
+       
+       document.getElementById('holoCardWrapper').style.transform = `rotateX(0deg) rotateY(0deg)`;
+       document.getElementById('holoOverlay').style.opacity = '0';
+       document.getElementById('binderViewModal').style.display = 'flex';
+    }
+
+    function closeBinderViewModal() {
+       document.getElementById('binderViewModal').style.display = 'none';
+       currentViewSlot = null;
+    }
+
+    function removeBinderCard() {
+       if(confirm("Bu kartı binder'dan silmek istediğinize emin misiniz?")) {
+          delete binderData[currentViewSlot];
+          localStorage.setItem('pkmn_binder_data', JSON.stringify(binderData));
+          closeBinderViewModal(); initBinder();
+       }
+    }
+
+    function setupHoloEffect() {
+       const wrapper = document.getElementById('holoCardWrapper');
+       const overlay = document.getElementById('holoOverlay');
+
+       function applyTilt(clientX, clientY) {
+          let rect = wrapper.getBoundingClientRect();
+          let x = clientX - rect.left; let y = clientY - rect.top;
+          let centerX = rect.width / 2; let centerY = rect.height / 2;
+          
+          let rotateX = ((y - centerY) / centerY) * -15; 
+          let rotateY = ((x - centerX) / centerX) * 15;
+          
+          wrapper.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.05, 1.05, 1.05)`;
+          overlay.style.opacity = '0.9';
+          overlay.style.backgroundPosition = `${(x / rect.width) * 100}% ${(y / rect.height) * 100}%`;
+       }
+       function resetTilt() {
+          wrapper.style.transform = `rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)`;
+          overlay.style.opacity = '0';
+       }
+
+       wrapper.addEventListener('mousemove', e => applyTilt(e.clientX, e.clientY));
+       wrapper.addEventListener('mouseleave', resetTilt);
+       wrapper.addEventListener('touchmove', e => {
+          e.preventDefault(); 
+          applyTilt(e.touches[0].clientX, e.touches[0].clientY);
+       }, { passive: false });
+       wrapper.addEventListener('touchend', resetTilt);
+    }
+
+    // --- TAB GEÇİŞLERİ ---
+    function switchTab(tabName) {
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.page-section').forEach(el => el.classList.remove('active'));
+
+      if (tabName === 'portfolio') {
+        document.getElementById('tabPortfolio').classList.add('active');
+        document.getElementById('pagePortfolio').classList.add('active');
+      } else if (tabName === 'market') {
+        document.getElementById('tabMarket').classList.add('active');
+        document.getElementById('pageMarket').classList.add('active');
+        renderMarketList();
+      } else if (tabName === 'binder') {
+        document.getElementById('tabBinder').classList.add('active');
+        document.getElementById('pageBinder').classList.add('active');
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function toggleCurrency() { 
+      currentCurrency = currentCurrency === 'TRY' ? 'USD' : 'TRY'; 
+      renderDashboard(); 
+      renderCards();
+      renderMarketList();
+    }
+
+    function getProductIcon(name) {
+      let n = name.toLowerCase();
+      if (n.includes('etb') || n.includes('elite trainer')) return '🍱';
+      if (n.includes('upc') || n.includes('ultra premium')) return '🧰';
+      if (n.includes('bundle')) return '🎒';
+      if (n.includes('box')) return '📦';
+      if (n.includes('pack') || n.includes('blister')) return '🧧';
+      if (n.includes('deck')) return '🃏';
+      if (n.includes('tin')) return '🥫';
+      if (n.includes('first partner')) return '📁';
+      return '✨';
+    }
+
+    function detectLanguage(text) {
+      if (!text) return "🇬🇧"; 
+      const lower = text.toLowerCase();
+      if (/(^|\s|\-|\.|\[)(çin|çince|chinese|cn)(\s|$|\-|\.|\])/i.test(lower)) return "🇨🇳";
+      if (/(^|\s|\-|\.|\[)(jap|jp|japon|japonca|japanese)(\s|$|\-|\.|\])/i.test(lower)) return "🇯🇵";
+      if (/(^|\s|\-|\.|\[)(kor|kore|korece|korean|kr)(\s|$|\-|\.|\])/i.test(lower)) return "🇰🇷";
+      if (/(^|\s|\-|\.|\[)(eng|ing|english|ingilizce|en|uk|us)(\s|$|\-|\.|\])/i.test(lower)) return "🇬🇧";
+      return "🇬🇧"; 
+    }
+
+    // --- RECONSTRUCTIVE PİYASA TEMİZLEYİCİSİ ---
+    function extractCleanName(text) {
+      let clean = text.toLowerCase();
+
+      let etbCount = (clean.match(/\betb\b/gi) || []).length + (clean.match(/\belite trainer box\b/gi) || []).length;
+      let boxCount = (clean.match(/\bbooster box\b/gi) || []).length;
+      if (etbCount > 1 || boxCount > 1) return ""; 
+
+      let isPC = clean.includes("pokemon center") || clean.includes("pc etb") || clean.includes("center") || clean.includes("centerdan");
+
+      if (clean.includes("yarım") || clean.includes("yarim") || clean.includes("half")) {
+         if (clean.includes("booster box")) clean = clean.replace(/yarım|yarim|half/g, '').replace("booster box", "half booster box");
+      }
+
+      let sets = [
+        "prismatic evolutions", "destined rivals", "twilight masquerade", "stellar miracle", "stellar crown",
+        "surging sparks", "obsidian flames", "paldean fates", "paldea evolved", "temporal forces",
+        "paradox rift", "crown zenith", "silver tempest", "lost origin", "brilliant stars", 
+        "fusion strike", "evolving skies", "chilling reign", "vivid voltage", "vstar universe",
+        "shiny treasure", "vmax climax", "eevee heroes", "clay burst", "snow hazard",
+        "ruler of the black flame", "wild force", "cyber judge", "crimson haze", "mask of change",
+        "night wanderer", "paradigm trigger", "incandescent arcana", "lost abyss", "dark phantasma",
+        "time gazer", "space juggler", "battle region", "star birth", "shiny star v", "tag all stars",
+        "ascended heroes", "spiritforged", "perfect order", "phantasmal flames", "chaos rising",
+        "pitch black", "white flare", "151", "greninja ex", "kingdra ex", "cynthia's garchomp ex",
+        "houndstone ex", "mewtwo ex", "charizard ex", "charizard", "zacian", "pikachu",
+        "first partner 1", "first partner 2", "first partner 3", "first partner"
+      ].sort((a, b) => b.length - a.length);
+
+      let types = [
+        "ultra premium collection", "elite trainer box", "special collection box", "premium collection",
+        "collection box", "half booster box", "booster bundle", "booster box", "sleeved booster pack", "3pack blister",
+        "3-pack blister", "3 pack blister", "blister pack", "booster pack", "mini tin", "deck box",
+        "ex box", "tin", "deck", "upc", "etb", "pack", "collection", "koleksiyonu", "koleksiyon", "set"
+      ].sort((a, b) => b.length - a.length);
+
+      let foundSet = sets.find(s => clean.includes(s));
+      let foundType = types.find(t => clean.includes(t));
+
+      if (foundSet && foundType) {
+        let finalType = foundType.replace("elite trainer box", "etb").replace("ultra premium collection", "upc").replace("3pack blister", "3-pack blister").replace("3 pack blister", "3-pack blister").replace("koleksiyonu", "collection").replace("koleksiyon", "collection");
+        let finalSetStr = foundSet.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        let finalTypeStr = finalType.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        finalTypeStr = finalTypeStr.replace(/\bEtb\b/g, "ETB").replace(/\bUpc\b/g, "UPC").replace(/\bEx\b/g, "EX");
+        finalSetStr = finalSetStr.replace(/\bEx\b/g, "EX");
+        let finalName = finalSetStr + " " + finalTypeStr;
+        if (isPC) finalName += " Pokemon Center";
+        return finalName;
+      }
+      
+      clean = clean.replace(/https?:\/\/[^\s]+/gi, ' ').replace(/\b(https|http|www|com|kartfiyat|listings)\b/gi, ' ').replace(/\b\d{1,2}[\s\.\/]\d{1,2}[\s\.\/]\d{2,4}[\s\-]*\d{1,2}[\s\.\:]\d{1,2}(?:[\s\.\:]\d{1,2})?\b/g, ' ').replace(/\d{1,3}(?:[\.\,\s]\d{3})*(?:[\.\,]\d+)?\s*(tl|₺|usd|\$|try)\b/gi, ' ').replace(/\(?\d+\s*(x|adet)\)?/gi, ' ');
+      let typeMatch = clean.match(/(.*?)\b(etb|upc|booster box|booster bundle|booster pack|blister|tin|deck box|deck|ex box|collection box|premium collection|special collection)\b(.*)/i);
+      if (typeMatch) { clean = typeMatch[1] + " " + typeMatch[2]; }
+      const garbage = ["ankara", "istanbul", "izmir", "içi", "elden", "teslim", "her", "yere", "kargo", "yapılır", "görüntü", "goruntu", "stok", "pokemon", "sealed", "takas", "teklif", "değerlendirilir", "adet fiyatı", "aldım diyene", "aldim diyene", "bugüne özel", "alana", "satılık", "satilik", "wts", "acil", "karışık", "mevcut", "son", "tekli", "satılmıştır", "satildi", "hepsini", "fırsatı kaçırma", "cooland1", "gelme", "ilan", "tcg", "paket"];
+      garbage.forEach(w => { clean = clean.replace(new RegExp(`\\b${w}\\b`, 'gi'), ' '); });
+      const names = ["binali akkuş", "binali", "akkuş", "burak ceylan", "burak", "ceylan", "ökmen", "sinan demir", "sinan", "demir", "bilgehan", "melih", "mert acar", "mert soylu", "mert", "acar", "soylu", "colakoglu", "çolakoğlu", "öztürk", "s öztürk", "s ozturk", "ömer", "batuhan", "ea", "hops", "mustafa efe okan", "mustafa", "efe", "okan", "ilkin", "i̇lkin", "çağlar keskin", "murat tüzgel", "yiğit yücehan", "selman avcı"];
+      names.forEach(n => { clean = clean.replace(new RegExp(`\\b${n}\\b`, 'gi'), ' '); });
+      clean = clean.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF])/g, ' ').replace(/[\[\]\-\_\.\~\:\(\)\,=\>\<]/g, ' ').replace(/\b(?!151\b)\d+\b/g, ' ').replace(/\s{2,}/g, ' ').trim();
+      clean = clean.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      clean = clean.replace(/\bEtb\b/gi, 'ETB').replace(/\bUpc\b/gi, 'UPC').replace(/\bVmax\b/gi, 'VMAX').replace(/\bVstar\b/gi, 'VSTAR').replace(/\bEx\b/gi, 'EX').replace(/\bBooster Box\b/gi, 'Booster Box').replace(/\bBooster Pack\b/gi, 'Booster Pack').replace(/\bBooster Bundle\b/gi, 'Booster Bundle');
+      if (isPC && !clean.includes("Pokemon Center")) { clean += " Pokemon Center"; }
+      return clean.trim();
+    }
+
+    function refreshDatabase() {
+      localMarketData = uploadedChats.flatMap(c => c.data);
+      let cm = document.getElementById('chatManager'); cm.innerHTML = '';
+      uploadedChats.forEach(c => { cm.innerHTML += `<div class="chat-row"><span>📦 ${c.name} (${c.data.length})</span><button class="chat-del-btn" onclick="deleteChat(${c.id})">Sil</button></div>`; });
+      document.getElementById('dbStatus').innerText = uploadedChats.length > 0 ? `${localMarketData.length} İlan Aktif.` : `Sohbet ZIP'i ekleyin.`;
+    }
+
+    function deleteChat(id) { 
+      uploadedChats = uploadedChats.filter(c => c.id !== id); localStorage.setItem('wa_chats_array', JSON.stringify(uploadedChats)); refreshDatabase(); renderMarketList();
+    }
+
+    async function parseWhatsAppZip(e) {
+      let file = e.target.files[0]; if(!file) return;
+      document.getElementById('dbStatus').innerText = "Yükleniyor... Temizleniyor...";
+      try {
+        let zip = new JSZip(); let zData = await zip.loadAsync(file); let txt = "";
+        for(let fn of Object.keys(zData.files)) { if(fn.endsWith('.txt')) { txt = await zData.files[fn].async("string"); break; } }
+        let lines = txt.split('\n'); let data = [];
+        const waPrefixRegex = /^\[?\d{1,2}[\/\.]\d{1,2}[\/\.]\d{2,4}[, ]+\d{1,2}:\d{2}(:\d{2})?(?:\s*[A-Z]{2})?\]?\s*[\-~]?\s*([^:]+):/i;
+
+        lines.forEach(line => {
+          let low = line.toLowerCase();
+          if((low.includes('tl') || low.includes('₺') || low.includes('$')) && (low.includes('etb') || low.includes('bundle') || low.includes('booster') || low.includes('box') || low.includes('pack') || low.includes('partner'))) {
+            let lister = "Bilinmiyor"; let pText = line;
+            const match = line.match(waPrefixRegex);
+            if (match && match[2]) { lister = match[2].trim(); pText = line.replace(match[0], '').trim(); }
+            if (lister === 'undefined' || lister === 'null') lister = "Bilinmiyor";
+            if (lister.length > 20) lister = lister.substring(0, 18) + '..';
+
+            let mPrice = pText.match(/(\d+(?:[\.\,]\d+)?(?:[\.\,]\d+)?)\s*(tl|\$|₺)/i);
+            if(mPrice) {
+              let numStr = mPrice[1]; let pMatch = numStr.match(/[\.\,]/g);
+              if (pMatch) {
+                  let parts = numStr.split(/[\.\,]/); let lastPart = parts.pop(); 
+                  if (lastPart.length === 3) numStr = numStr.replace(/[\.\,]/g, '');
+                  else numStr = parts.join('').replace(/[\.\,]/g, '') + '.' + lastPart;
+              }
+              let p = parseFloat(numStr);
+              if(low.includes('$')) p *= usdRate; else if(p > 0 && p < 200) p *= 1000;
+              let name = extractCleanName(pText);
+              if(name.length > 2) data.push({ id: Date.now() + Math.random(), rawText: pText, product: name, lister: lister, price: p });
+            }
+          }
+        });
+        uploadedChats.push({ id: Date.now(), name: file.name.substring(0,12), data: data.reverse() });
+        localStorage.setItem('wa_chats_array', JSON.stringify(uploadedChats)); refreshDatabase(); renderMarketList();
+      } catch(err) { document.getElementById('dbStatus').innerText = "Hata oluştu!"; }
+    }
+
+    function getAggregatedMarketData() {
+      let groups = {};
+      localMarketData.forEach(item => {
+        let flag = detectLanguage(item.rawText || item.product);
+        let key = `${flag} ${item.product}`;
+        if (!groups[key]) groups[key] = { pureName: item.product, flag: flag, fullName: key, listings: [] };
+        groups[key].listings.push(item);
+      });
+      let result = [];
+      Object.values(groups).forEach(g => {
+        let allPrices = g.listings.map(l => l.price);
+        let recentListings = g.listings.slice(0, 4);
+        let recentAvg = recentListings.reduce((s, x) => s + x.price, 0) / recentListings.length;
+        result.push({ ...g, avgPrice: Math.round(recentAvg), minPrice: Math.min(...allPrices), maxPrice: Math.max(...allPrices), count: g.listings.length });
+      });
+      return result;
+    }
+
+    function renderMarketList() {
+      let listEl = document.getElementById('marketTickerList'); if (!listEl) return; listEl.innerHTML = '';
+      let query = (document.getElementById('marketSearchInput')?.value || '').toLowerCase().trim();
+      let data = getAggregatedMarketData();
+      data.sort((a, b) => b.count - a.count || a.fullName.localeCompare(b.fullName));
+      let filtered = data.filter(d => d.fullName.toLowerCase().includes(query));
+      document.getElementById('marketSummaryCount').innerText = `${filtered.length} Farklı Ürün Takipte`;
+      if (filtered.length === 0) { listEl.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">Ürün bulunamadı.</div>`; return; }
+      filtered.forEach(p => {
+        let card = document.createElement('div'); card.className = 'market-ticker-card'; card.onclick = () => openMarketDetail(p);
+        card.innerHTML = `<div class="ticker-left"><div class="product-icon">${getProductIcon(p.pureName)}</div><div><div style="font-weight:700; color:#FFF; font-size:14px; line-height:1.2;">${p.fullName}</div><div style="font-size:11px; color:var(--text-muted); margin-top:4px;">📦 ${p.count} İlan &bull; Aralık: ${formatMoney(p.minPrice)} - ${formatMoney(p.maxPrice)}</div></div></div><div class="ticker-right"><div style="font-size:16px; font-weight:900; color:var(--success);">${formatMoney(p.avgPrice)}</div><div style="font-size:10px; color:#93C5FD; font-weight:700; margin-top:4px;">Ortalama ➔</div></div>`;
+        listEl.appendChild(card);
+      });
+    }
+
+    function openManualAddModal() { document.getElementById('manualAddModal').style.display = 'flex'; }
+    function closeManualAddModal() { document.getElementById('manualAddModal').style.display = 'none'; }
+    function confirmManualAdd() {
+      let name = document.getElementById('manName').value.trim(); let buy = parseFloat(document.getElementById('manBuy').value) || 0; let current = parseFloat(document.getElementById('manMarket').value); let qty = parseInt(document.getElementById('manQty').value) || 1;
+      if(!name || isNaN(current)) { alert("Ürün adı ve piyasa fiyatı zorunludur!"); return; }
+      collection.unshift({ id: Date.now(), name, buy, current, cond: "Kusursuz (Sealed)", qty, status: 'active' }); saveAndRender();
+      document.getElementById('manName').value = ''; document.getElementById('manBuy').value = ''; document.getElementById('manMarket').value = ''; document.getElementById('manQty').value = '1'; closeManualAddModal();
+    }
+
+    function searchLocal(e) {
+      let q = e.target.value.toLowerCase().trim(); let res = document.getElementById('searchResults');
+      if(q.length < 2) { res.style.display = 'none'; return; }
+      let data = getAggregatedMarketData(); let queryWords = q.split(' ').filter(w => w.length > 1);
+      let scored = data.map(item => { let score = 0; let target = item.fullName.toLowerCase(); if (target.includes(q)) score += 10; queryWords.forEach(word => { if (target.includes(word)) score += 3; }); return { ...item, score }; }).filter(item => item.score > 0);
+      scored.sort((a, b) => b.score - a.score); let matches = scored.slice(0, 15);
+      if(matches.length === 0) { res.style.display = 'none'; return; } res.innerHTML = '';
+      
+      let bestMatch = matches[0];
+      let estDiv = document.createElement('div'); estDiv.className = 'suggestion-item'; estDiv.style.backgroundColor = 'rgba(16, 185, 129, 0.15)'; estDiv.style.borderBottom = '2px solid rgba(16, 185, 129, 0.4)'; estDiv.onclick = () => selectCard(bestMatch.fullName, bestMatch.avgPrice);
+      estDiv.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center;"><div style="color:#34D399; font-weight:800; font-size:11px; text-transform:uppercase;">💡 Sistem Tahmini (Ortalama)</div><div style="color:#10B981; font-weight:900; font-size:15px;">${bestMatch.avgPrice.toLocaleString('tr-TR')} ₺</div></div><div style="display:flex; align-items:center; gap:8px; margin-top:8px;"><div class="product-icon" style="width:28px; height:28px; min-width:28px; font-size:14px;">${getProductIcon(bestMatch.pureName)}</div><div><div style="color:#FFF; font-weight:700; font-size:14px;">${bestMatch.fullName}</div><div style="font-size:10px; color:#94A3B8; margin-top:2px;">${bestMatch.count} ilan baz alındı. Aralık: ${formatMoney(bestMatch.minPrice)} - ${formatMoney(bestMatch.maxPrice)}</div></div></div>`;
+      res.appendChild(estDiv);
+
+      if (matches.length > 1) {
+          matches.slice(1).forEach(m => {
+            let div = document.createElement('div'); div.className = 'suggestion-item'; div.onclick = () => selectCard(m.fullName, m.avgPrice);
+            div.innerHTML = `<div style="display:flex; align-items:center; gap:10px;"><div class="product-icon" style="width:32px; height:32px; min-width:32px; font-size:16px;">${getProductIcon(m.pureName)}</div><div style="flex:1;"><div style="display:flex;justify-content:space-between;font-size:13px;"><span style="color:#FFF;font-weight:700;">${m.fullName}</span><span style="color:#10B981;font-weight:900;">${m.avgPrice.toLocaleString('tr-TR')}₺</span></div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${m.count} İlan Ortalaması</div></div></div>`; res.appendChild(div);
+          });
+      }
+      res.style.display = 'block';
+    }
+
+    function selectCard(name, price) {
+      document.getElementById('cardName').value = name; document.getElementById('currentPrice').value = price; document.getElementById('cardName').style.display = 'none'; document.getElementById('selectedCardNameText').innerText = name; document.getElementById('selectedCardChip').style.display = 'flex'; document.getElementById('searchResults').style.display = 'none';
+    }
+
+    function clearSelection() { document.getElementById('cardName').value = ''; document.getElementById('cardName').style.display = 'block'; document.getElementById('selectedCardChip').style.display = 'none'; document.getElementById('currentPrice').value = ''; }
+    function saveAndRender() { localStorage.setItem('pkmn_sealed_collection', JSON.stringify(collection)); renderDashboard(); renderCards(); }
+    
+    function addCard() {
+      let name = document.getElementById('cardName').value; if(!name) name = document.getElementById('selectedCardNameText').innerText;
+      let buy = parseFloat(document.getElementById('buyPrice').value) || 0; let current = parseFloat(document.getElementById('currentPrice').value); let qty = parseInt(document.getElementById('qtyInput').value) || 1;
+      if(!name || isNaN(current)) { alert("Lütfen arama listesinden bir ürün seçin veya sağdaki (+) butonu ile özel ekleyin."); return; }
+      collection.unshift({ id: Date.now(), name, buy, current, cond: "Kusursuz (Sealed)", qty, status: 'active' }); saveAndRender(); clearSelection(); document.getElementById('buyPrice').value = ''; document.getElementById('qtyInput').value = '1'; document.getElementById('currentPrice').value = '';
+    }
+
+    function updateQty(id, d) { let c = collection.find(x => x.id === id); if(c) { c.qty += d; if(c.qty <= 0) deleteCard(id); else saveAndRender(); } }
+    function deleteCard(id) { collection = collection.filter(x => x.id !== id); saveAndRender(); }
+    function openSellModal(id) { currentSellId = id; let c = collection.find(x => x.id === id); if(!c) return; document.getElementById('sellModalProductName').innerText = `📦 ${c.name} (Stok: ${c.qty} Adet)`; document.getElementById('sellRows').innerHTML = `<div class="sell-row"><input type="number" class="text-input sell-qty" placeholder="Adet" max="${c.qty}" min="1" value="1" style="flex:0.4;"><input type="number" class="text-input sell-price" placeholder="Birim Satış Fiyatı (₺)" value="${c.current}" style="flex:1;"></div>`; document.getElementById('sellModal').style.display = 'flex'; }
+    function addSellRow() { let div = document.createElement('div'); div.className = 'sell-row'; div.innerHTML = `<input type="number" class="text-input sell-qty" placeholder="Adet" min="1" value="1" style="flex:0.4;"><input type="number" class="text-input sell-price" placeholder="Birim Satış Fiyatı (₺)" style="flex:1;"><button class="del-row-btn" onclick="this.parentElement.remove()">✖</button>`; document.getElementById('sellRows').appendChild(div); }
+    function closeSellModal() { document.getElementById('sellModal').style.display = 'none'; currentSellId = null; }
+
+    function confirmSale() {
+      let c = collection.find(x => x.id === currentSellId); if(!c) return;
+      let rows = document.querySelectorAll('.sell-row'); let totalSellQty = 0; let sales = []; let hasError = false;
+      rows.forEach(r => { let q = parseInt(r.querySelector('.sell-qty').value); let p = parseFloat(r.querySelector('.sell-price').value); if (isNaN(q) || q <= 0 || isNaN(p) || p < 0) hasError = true; else { totalSellQty += q; sales.push({qty: q, price: p}); } });
+      if(hasError) { alert("Lütfen tüm adet ve fiyat alanlarını geçerli doldurun."); return; }
+      if(totalSellQty > c.qty) { alert(`Hata: Girdiğiniz toplam adet (${totalSellQty}), mevcut stoktan (${c.qty}) fazla olamaz!`); return; }
+      let d = new Date(); let dateStr = `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`; c.qty -= totalSellQty;
+      sales.forEach(s => { collection.push({ id: Date.now() + Math.random(), name: c.name, buy: c.buy, current: c.current, cond: c.cond, qty: s.qty, status: 'sold', soldPrice: s.price, soldDate: dateStr }); });
+      if(c.qty <= 0) { collection = collection.filter(x => x.id !== currentSellId); } closeSellModal(); saveAndRender();
+    }
+
+    function undoSell(id) { let c = collection.find(x => x.id === id); if(c) { c.status = 'active'; delete c.soldPrice; delete c.soldDate; saveAndRender(); } }
+    function copyWTS(id) { let c = collection.find(x => x.id === id); if(c) { navigator.clipboard.writeText(`WTS 🟢\n\n📦 ${c.name}\n✨ Kondisyon: ${c.cond}\n💵 Fiyat: ${c.current.toLocaleString('tr-TR')} TL\n\nDM atabilirsiniz.`); alert("WTS metni kopyalandı!"); } }
+
+    function exportData() {
+      const dataToExport = { collection: collection, chats: uploadedChats, binder: binderData };
+      const jsonStr = JSON.stringify(dataToExport);
+      const fileName = "mezzy_tcg_yedek.json";
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: "application/json" })] })) {
+        navigator.share({ files: [new File([blob], fileName, { type: "application/json" })], title: 'Mezzy TCG Yedek' }).catch(err => console.log(err));
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = fileName;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+      }
+    }
+
+    function importData(event) {
+      const file = event.target.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (data.collection) localStorage.setItem('pkmn_sealed_collection', JSON.stringify(data.collection));
+          if (data.chats) localStorage.setItem('wa_chats_array', JSON.stringify(data.chats));
+          if (data.binder) localStorage.setItem('pkmn_binder_data', JSON.stringify(data.binder));
+          alert("Veriler başarıyla yüklendi! Sayfa yenileniyor..."); location.reload();
+        } catch (err) { alert("Geçersiz yedek dosyası!"); }
+      }; reader.readAsText(file);
+    }
+
+    function renderDashboard() {
+      let activeCards = collection.filter(c => c.status !== 'sold'); let soldCards = collection.filter(c => c.status === 'sold');
+      let activeCost = activeCards.reduce((s, c) => s + (c.buy * c.qty), 0); let soldCost = soldCards.reduce((s, c) => s + (c.buy * c.qty), 0);
+      let totalSpent = activeCost + soldCost; let activeVal = activeCards.reduce((s, c) => s + (c.current * c.qty), 0);
+      let expectedProfit = activeVal - activeCost; let realizedProfit = soldCards.reduce((s, c) => s + ((c.soldPrice - c.buy) * c.qty), 0);
+      
+      document.getElementById('totalValue').innerText = formatMoney(activeVal); document.getElementById('totalSpent').innerText = formatMoney(totalSpent); document.getElementById('totalCost').innerText = formatMoney(activeCost);
+      document.getElementById('expectedProfit').innerText = (expectedProfit >= 0 ? '+' : '') + formatMoney(expectedProfit); document.getElementById('expectedProfit').className = 'stat-value ' + (expectedProfit >= 0 ? 'green' : 'red');
+      document.getElementById('realizedProfit').innerText = (realizedProfit >= 0 ? '+' : '') + formatMoney(realizedProfit); document.getElementById('realizedProfit').className = 'stat-value ' + (realizedProfit >= 0 ? 'green' : 'red');
+
+      let productValues = {}; activeCards.forEach(c => { productValues[c.name] = (productValues[c.name] || 0) + (c.current * c.qty); });
+      let sortedProducts = Object.entries(productValues).sort((a,b) => b[1] - a[1]);
+      let labels = []; let dataVals = [];
+      for(let i=0; i < Math.min(4, sortedProducts.length); i++) { labels.push(sortedProducts[i][0].substring(3,15) + '..'); dataVals.push(sortedProducts[i][1]); }
+      if(sortedProducts.length > 4) { let otherSum = sortedProducts.slice(4).reduce((s, p) => s + p[1], 0); labels.push('Diğerleri'); dataVals.push(otherSum); }
+
+      let ctx = document.getElementById('portfolioChart').getContext('2d');
+      if(portfolioChart) portfolioChart.destroy();
+      portfolioChart = new Chart(ctx, { type: 'doughnut', data: { labels: labels, datasets: [{ data: dataVals, backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#A855F7', '#64748B'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 9 }, color:'#94A3B8' } } }, cutout: '65%' } });
+    }
+
+    function renderCards() {
+      let activeList = document.getElementById('cardList'); activeList.innerHTML = ''; let soldList = document.getElementById('soldList'); soldList.innerHTML = '';
+      let activeCards = collection.filter(c => c.status !== 'sold'); let soldCards = collection.filter(c => c.status === 'sold');
+      let sType = document.getElementById('sortFilter').value;
+      if(sType === 'profitDesc') activeCards.sort((a,b) => ((b.current-b.buy)*b.qty) - ((a.current-a.buy)*a.qty)); else if(sType === 'costDesc') activeCards.sort((a,b) => (b.buy*b.qty) - (a.buy*a.qty)); else if(sType === 'az') activeCards.sort((a,b) => a.name.localeCompare(b.name));
+
+      activeCards.forEach(c => {
+        let p = (c.current - c.buy) * c.qty; let roi = c.buy > 0 ? `%${(((c.current - c.buy)/c.buy)*100).toFixed(0)}` : 'Trade';
+        activeList.innerHTML += `<div class="panel card-item"><div style="display:flex; gap:14px; align-items:center;"><div class="product-icon">${getProductIcon(c.name)}</div><div style="flex:1;"><h3 style="margin:0 0 4px 0; font-size:14px; font-weight:700;">${c.name}</h3><span class="roi-badge">ROI: ${roi}</span><div style="font-size:12px; color:var(--text-muted); margin-top:3px;">Birim Alış: <b>${formatMoney(c.buy)}</b> | Piyasa: <b style="color:var(--success);">${formatMoney(c.current)}</b></div><div class="${p >= 0 ? 'green' : 'red'}" style="font-size:12px; font-weight:800; margin-top:3px;">Beklenen K/Z: ${p >= 0 ? '+' : ''}${formatMoney(p)}</div></div></div><div class="card-actions"><div class="qty-controls"><button class="qty-btn" onclick="updateQty(${c.id}, -1)">-</button><span style="font-size:13px; font-weight:bold; width:28px; text-align:center;">${c.qty}</span><button class="qty-btn" onclick="updateQty(${c.id}, 1)">+</button></div><div style="display:flex; gap:6px;"><button class="wts-btn" onclick="openSellModal(${c.id})" style="background:rgba(16, 185, 129, 0.15); color:#34D399; border-color:rgba(16,185,129,0.3);">Sat</button><button class="wts-btn" onclick="copyWTS(${c.id})">WTS</button><button class="delete-btn" onclick="deleteCard(${c.id})">Sil</button></div></div></div>`;
+      });
+
+      soldCards.forEach(c => {
+        let p = (c.soldPrice - c.buy) * c.qty; let roi = c.buy > 0 ? `%${(((c.soldPrice - c.buy)/c.buy)*100).toFixed(0)}` : 'Trade';
+        soldList.innerHTML += `<div class="panel card-item" style="border-color: rgba(16, 185, 129, 0.3);"><div style="display:flex; gap:14px; align-items:center;"><div class="product-icon" style="opacity:0.6;">${getProductIcon(c.name)}</div><div style="flex:1; opacity:0.85;"><h3 style="margin:0 0 4px 0; font-size:14px; font-weight:700; text-decoration:line-through;">${c.name}</h3><span class="roi-badge" style="background:rgba(16,185,129,0.2); color:#34D399;">Satıldı (${c.qty} Adet)</span><span class="roi-badge">ROI: ${roi}</span><div style="font-size:12px; color:var(--text-muted); margin-top:3px;">Birim Alış: <b>${formatMoney(c.buy)}</b> | Satış: <b style="color:var(--success);">${formatMoney(c.soldPrice)}</b></div><div class="${p >= 0 ? 'green' : 'red'}" style="font-size:12px; font-weight:800; margin-top:3px;">Gerçekleşen Net K/Z: ${p >= 0 ? '+' : ''}${formatMoney(p)}</div></div></div><div class="card-actions" style="justify-content:flex-end;"><div style="display:flex; gap:6px;"><button class="wts-btn" onclick="undoSell(${c.id})" style="background:rgba(245, 158, 11, 0.15); color:#FCD34D; border-color:rgba(245,158,11,0.3);">İptal Et</button><button class="delete-btn" onclick="deleteCard(${c.id})">Sil</button></div></div></div>`;
+      });
+    }
+
+    // Uygulamayı başlat
+    initApp();
+  </script>
+</body>
+</html>
