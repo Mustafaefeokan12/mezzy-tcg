@@ -1044,12 +1044,13 @@
         </div>
       </div>
 
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding: 6px 12px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid var(--glass-border);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; padding: 6px 12px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid var(--glass-border);">
         <span style="font-size:11px; color:var(--text-muted); font-weight:700;">📦 Canlı WhatsApp İlanları:</span>
-        <button onclick="triggerWhatsAppFetch()" class="btn" style="background:rgba(16, 185, 129, 0.15); border:1px solid rgba(16, 185, 129, 0.4); color:#34D399; font-size:11px; font-weight:800; padding:6px 12px; border-radius:8px; cursor:pointer; display:flex; align-items:center; gap:6px;">
-          <span>⚡</span> <span>WhatsApp Verilerini Çek</span>
+        <button id="btnFetchWhatsAppMarket" onclick="triggerWhatsAppFetch()" class="btn" style="background:rgba(16, 185, 129, 0.15); border:1px solid rgba(16, 185, 129, 0.4); color:#34D399; font-size:11px; font-weight:800; padding:6px 12px; border-radius:8px; cursor:pointer; display:flex; align-items:center; gap:6px;">
+          <span id="btnFetchIconMarket">⚡</span> <span id="btnFetchTextMarket">WhatsApp Verilerini Çek</span>
         </button>
       </div>
+      <div id="waSyncProgressDetailMarket" style="font-size:11px; color:#38BDF8; font-weight:600; margin-bottom:10px; padding:6px 12px; background:rgba(56,189,248,0.1); border:1px solid rgba(56,189,248,0.25); border-radius:8px; display:none;"></div>
 
       <div style="position:relative;">
         <div style="position:relative; width:100%;">
@@ -1794,6 +1795,11 @@
                     }
                 }
             }, error => console.warn("Chat sync error:", error));
+
+            // 4. Canlı WhatsApp Veri Çekme Komut & Durum Dinleyicisi
+            if (typeof setupRealtimeWaSyncListener === 'function') {
+                setupRealtimeWaSyncListener(firestoreDb);
+            }
 
         } catch(err) {
             console.error("Firebase init hatası:", err);
@@ -3403,10 +3409,11 @@ Lütfen Türkçe olarak 3 kısa maddede:
           if (rateEl) rateEl.innerText = `Kur: 35.0₺`;
         });
 
-      // Sekme tekrar aktif olduğunda canlı veriyi kontrol et
+      // Sekme tekrar aktif olduğunda canlı veriyi kontrol et (çık-gir yapıldığında anında günceller)
       document.addEventListener("visibilitychange", () => {
-          if (!document.hidden && firestoreDb) {
-              forceCloudSync(false);
+          if (!document.hidden) {
+              if (firestoreDb) forceCloudSync(false);
+              initWaSyncStatus();
           }
       });
 
@@ -3415,6 +3422,7 @@ Lütfen Türkçe olarak 3 kısa maddede:
     }
 
     function switchTab(tabName) {
+      initWaSyncStatus();
       document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
       document.querySelectorAll('.page-section').forEach(el => el.classList.remove('active'));
 
@@ -4532,35 +4540,56 @@ Rules:
 
     // --- ON-DEMAND WHATSAPP CANLI VERİ ÇEKME YÖNETİMİ ---
     let waSyncPollInterval = null;
+    let _waSyncFirestoreListenerAttached = false;
 
     function updateWaSyncUI(status, progress, lastSynced, newCount) {
+      const isRunning = (status === 'running' || status === 'pending');
+      const isPending = (status === 'pending');
+
       const btn = document.getElementById('btnFetchWhatsApp');
       const btnIcon = document.getElementById('btnFetchIcon');
       const btnText = document.getElementById('btnFetchText');
+      const btnMarket = document.getElementById('btnFetchWhatsAppMarket');
+      const btnIconMarket = document.getElementById('btnFetchIconMarket');
+      const btnTextMarket = document.getElementById('btnFetchTextMarket');
       const statusEl = document.getElementById('waSyncStatus');
       const lastTimeEl = document.getElementById('waSyncLastTime');
       const detailEl = document.getElementById('waSyncProgressDetail');
+      const detailElMarket = document.getElementById('waSyncProgressDetailMarket');
 
       if (lastSynced) {
         if (lastTimeEl) lastTimeEl.innerText = lastSynced;
         try { localStorage.setItem('mezzy_wa_last_sync', lastSynced); } catch(e){}
       }
 
-      if (status === 'running') {
+      if (isRunning) {
         if (btn) {
           btn.disabled = true;
           btn.style.opacity = '0.75';
           btn.style.cursor = 'not-allowed';
         }
+        if (btnMarket) {
+          btnMarket.disabled = true;
+          btnMarket.style.opacity = '0.75';
+          btnMarket.style.cursor = 'not-allowed';
+        }
         if (btnIcon) btnIcon.innerText = '⏳';
-        if (btnText) btnText.innerText = 'Veriler Çekiliyor...';
+        if (btnIconMarket) btnIconMarket.innerText = '⏳';
+        if (btnText) btnText.innerText = isPending ? 'İstek Gönderildi, Bekleniyor...' : 'Veriler Çekiliyor...';
+        if (btnTextMarket) btnTextMarket.innerText = isPending ? 'Başlatılıyor...' : 'Veriler Çekiliyor...';
+
         if (statusEl) {
-          statusEl.innerText = '🔄 Taranıyor... (Bağlantı Açık)';
+          statusEl.innerText = isPending ? '⏳ İstek Alındı, Laptop Bekleniyor...' : '🔄 Canlı Taranıyor (Bağlantı Açık)...';
           statusEl.style.color = '#FBBF24';
         }
+        const progMsg = progress || (isPending ? 'Laptop WhatsApp Web\'e bağlanıyor...' : 'WhatsApp Web taranıyor...');
         if (detailEl) {
           detailEl.style.display = 'block';
-          detailEl.innerText = progress || 'WhatsApp Web taranıyor...';
+          detailEl.innerText = progMsg;
+        }
+        if (detailElMarket) {
+          detailElMarket.style.display = 'block';
+          detailElMarket.innerText = '📡 ' + progMsg;
         }
       } else if (status === 'completed') {
         if (btn) {
@@ -4568,8 +4597,15 @@ Rules:
           btn.style.opacity = '1';
           btn.style.cursor = 'pointer';
         }
+        if (btnMarket) {
+          btnMarket.disabled = false;
+          btnMarket.style.opacity = '1';
+          btnMarket.style.cursor = 'pointer';
+        }
         if (btnIcon) btnIcon.innerText = '⚡';
+        if (btnIconMarket) btnIconMarket.innerText = '⚡';
         if (btnText) btnText.innerText = 'WhatsApp\'tan Canlı Veri Çek';
+        if (btnTextMarket) btnTextMarket.innerText = 'WhatsApp Verilerini Çek';
         if (statusEl) {
           statusEl.innerText = '✅ Tamamlandı (Bağlantı Kapalı)';
           statusEl.style.color = '#34D399';
@@ -4578,14 +4614,26 @@ Rules:
           detailEl.style.display = 'block';
           detailEl.innerText = progress || 'Yeni veriler toplandı ve eşitlendi.';
         }
+        if (detailElMarket) {
+          detailElMarket.style.display = 'block';
+          detailElMarket.innerText = '✅ ' + (progress || 'Veriler eşitlendi.');
+          setTimeout(() => { if (detailElMarket) detailElMarket.style.display = 'none'; }, 6000);
+        }
       } else if (status === 'error') {
         if (btn) {
           btn.disabled = false;
           btn.style.opacity = '1';
           btn.style.cursor = 'pointer';
         }
+        if (btnMarket) {
+          btnMarket.disabled = false;
+          btnMarket.style.opacity = '1';
+          btnMarket.style.cursor = 'pointer';
+        }
         if (btnIcon) btnIcon.innerText = '⚠️';
+        if (btnIconMarket) btnIconMarket.innerText = '⚠️';
         if (btnText) btnText.innerText = 'Tekrar Dene';
+        if (btnTextMarket) btnTextMarket.innerText = 'Tekrar Dene';
         if (statusEl) {
           statusEl.innerText = '❌ Hata (Bağlantı Kapalı)';
           statusEl.style.color = '#EF4444';
@@ -4594,6 +4642,11 @@ Rules:
           detailEl.style.display = 'block';
           detailEl.innerText = progress || 'Veri çekilemedi.';
         }
+        if (detailElMarket) {
+          detailElMarket.style.display = 'block';
+          detailElMarket.innerText = '❌ ' + (progress || 'Veri çekilemedi.');
+          setTimeout(() => { if (detailElMarket) detailElMarket.style.display = 'none'; }, 8000);
+        }
       } else {
         // idle
         if (btn) {
@@ -4601,8 +4654,15 @@ Rules:
           btn.style.opacity = '1';
           btn.style.cursor = 'pointer';
         }
+        if (btnMarket) {
+          btnMarket.disabled = false;
+          btnMarket.style.opacity = '1';
+          btnMarket.style.cursor = 'pointer';
+        }
         if (btnIcon) btnIcon.innerText = '⚡';
+        if (btnIconMarket) btnIconMarket.innerText = '⚡';
         if (btnText) btnText.innerText = 'WhatsApp\'tan Canlı Veri Çek';
+        if (btnTextMarket) btnTextMarket.innerText = 'WhatsApp Verilerini Çek';
         if (statusEl) {
           statusEl.innerText = 'Hazır (Bağlantı Kapalı)';
           statusEl.style.color = '#F1F5F9';
@@ -4610,63 +4670,96 @@ Rules:
         if (detailEl && detailEl.innerText === '') {
           detailEl.style.display = 'none';
         }
+        if (detailElMarket && detailElMarket.innerText === '') {
+          detailElMarket.style.display = 'none';
+        }
       }
     }
 
     async function triggerWhatsAppFetch() {
       const btn = document.getElementById('btnFetchWhatsApp');
-      if (btn && btn.disabled) return;
+      const btnMarket = document.getElementById('btnFetchWhatsAppMarket');
+      if ((btn && btn.disabled) || (btnMarket && btnMarket.disabled)) return;
 
-      updateWaSyncUI('running', 'Veri çekme isteği gönderiliyor...', null, 0);
+      updateWaSyncUI('pending', 'Veri çekme isteği iletildi, bekleniyor...', null, 0);
 
       try {
-        await fetch('/api/fetch-whatsapp', { method: 'POST' });
-      } catch (err) {
-        // Telefondan girildiğinde yerel porta ulaşılamayabilir, bulut komutu tetiklenecek
-      }
+        fetch('/api/fetch-whatsapp', { method: 'POST' }).catch(() => {});
+      } catch (err) {}
 
       // Bulut komutunu daima Firestore'a yaz (Telefondan da laptopu tek tıkla çalıştırır!)
       if (typeof firestoreDb !== 'undefined' && firestoreDb) {
         firestoreDb.collection('mezzy_tcg_commands').doc('sync_request').set({
           status: 'pending',
           progress: 'Veri çekme isteği iletildi, WhatsApp Web başlatılıyor...',
-          requested_at: Date.now()
+          requested_at: Date.now(),
+          updated_at: Date.now()
         }).catch(e => console.warn('Firestore sync command error:', e));
       }
 
-      if (waSyncPollInterval) clearInterval(waSyncPollInterval);
-      waSyncPollInterval = setInterval(async () => {
-        try {
-          const res = await fetch('/api/fetch-whatsapp-status');
-          const data = await res.json();
-          updateWaSyncUI(data.status, data.progress, data.last_synced, data.new_count);
+      // Yerel sunucu varsa yerel API üzerinden de kontrol et
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        if (waSyncPollInterval) clearInterval(waSyncPollInterval);
+        waSyncPollInterval = setInterval(async () => {
+          try {
+            const res = await fetch('/api/fetch-whatsapp-status');
+            const data = await res.json();
+            updateWaSyncUI(data.status, data.progress, data.last_synced, data.new_count);
 
-          if (data.status === 'completed' || data.status === 'error') {
-            clearInterval(waSyncPollInterval);
-            waSyncPollInterval = null;
-            if (data.status === 'completed') {
-              if (typeof checkCloudSyncOnStartup === 'function') {
-                checkCloudSyncOnStartup();
-              }
-              fetch('/mezzy_tcg_yedek.json?t=' + Date.now())
-                .then(r => r.json())
-                .then(d => {
-                  if (d && d.chats && Array.isArray(d.chats)) {
-                    uploadedChats = d.chats;
-                    if (window.deduplicateUploadedChats) {
-                      uploadedChats = window.deduplicateUploadedChats(uploadedChats);
+            if (data.status === 'completed' || data.status === 'error') {
+              clearInterval(waSyncPollInterval);
+              waSyncPollInterval = null;
+              if (data.status === 'completed') {
+                if (typeof checkCloudSyncOnStartup === 'function') checkCloudSyncOnStartup();
+                fetch('/mezzy_tcg_yedek.json?t=' + Date.now())
+                  .then(r => r.json())
+                  .then(d => {
+                    if (d && d.chats && Array.isArray(d.chats)) {
+                      uploadedChats = d.chats;
+                      if (window.deduplicateUploadedChats) {
+                        uploadedChats = window.deduplicateUploadedChats(uploadedChats);
+                      }
+                      refreshDatabase();
+                      renderLocalMarketGroups();
                     }
-                    refreshDatabase();
-                    renderLocalMarketGroups();
-                  }
-                })
-                .catch(() => {});
+                  })
+                  .catch(() => {});
+              }
+            }
+          } catch (e) {}
+        }, 2000);
+      }
+    }
+
+    function setupRealtimeWaSyncListener(db) {
+      if (!db || _waSyncFirestoreListenerAttached) return;
+      _waSyncFirestoreListenerAttached = true;
+      try {
+        db.collection('mezzy_tcg_commands').doc('sync_request').onSnapshot(doc => {
+          if (doc && doc.exists) {
+            const data = doc.data();
+            if (data) {
+              const status = data.status || 'idle';
+              const progress = data.progress || '';
+              const last = data.last_synced || localStorage.getItem('mezzy_wa_last_sync') || '05.10.2026 15:59';
+              const count = parseInt(data.new_count || 0);
+
+              const now = Date.now();
+              const reqTime = data.updated_at || data.requested_at || 0;
+              // İstek 5 dakikadan daha eskiyse (laptop kapalı kalmışsa vs.) takılı kalmasın
+              if ((status === 'pending' || status === 'running') && reqTime > 0 && (now - reqTime) > 300000) {
+                updateWaSyncUI('idle', 'İşlem zaman aşımına uğradı (Laptop çevrimdışı olabilir).', last, 0);
+              } else {
+                updateWaSyncUI(status, progress, last, count);
+              }
+
+              if (status === 'completed') {
+                if (typeof checkCloudSyncOnStartup === 'function') checkCloudSyncOnStartup();
+              }
             }
           }
-        } catch (e) {
-          // Mobil cihazda yerel sunucu yoksa Firestore onSnapshot zaten canlı güncelliyor
-        }
-      }, 2000);
+        }, err => console.warn('Firestore sync_request listener error:', err));
+      } catch(e) {}
     }
 
     function initWaSyncStatus() {
@@ -4675,34 +4768,22 @@ Rules:
         const lastTimeEl = document.getElementById('waSyncLastTime');
         if (lastTimeEl) lastTimeEl.innerText = savedSync;
 
-        // 1. Yerel API kontrolü
-        fetch('/api/fetch-whatsapp-status')
-          .then(r => r.json())
-          .then(data => {
-            if (data) {
-              const last = data.last_synced || savedSync;
-              updateWaSyncUI(data.status, data.progress, last, data.new_count);
-            }
-          })
-          .catch(() => {});
+        // 1. Yerel API kontrolü (Sadece localhost üzerindeysen)
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+          fetch('/api/fetch-whatsapp-status')
+            .then(r => r.json())
+            .then(data => {
+              if (data) {
+                const last = data.last_synced || savedSync;
+                updateWaSyncUI(data.status, data.progress, last, data.new_count);
+              }
+            })
+            .catch(() => {});
+        }
 
         // 2. Canlı Bulut (Firestore) dinleyicisi - Telefon ve uzaktan erişim için
         if (typeof firestoreDb !== 'undefined' && firestoreDb) {
-          firestoreDb.collection('mezzy_tcg_commands').doc('sync_request').onSnapshot(doc => {
-            if (doc && doc.exists) {
-              const data = doc.data();
-              if (data) {
-                const status = data.status || 'idle';
-                const progress = data.progress || '';
-                const last = data.last_synced || localStorage.getItem('mezzy_wa_last_sync') || '05.10.2026 15:59';
-                const count = parseInt(data.new_count || 0);
-                updateWaSyncUI(status, progress, last, count);
-                if (status === 'completed') {
-                  if (typeof checkCloudSyncOnStartup === 'function') checkCloudSyncOnStartup();
-                }
-              }
-            }
-          });
+          setupRealtimeWaSyncListener(firestoreDb);
         }
       } catch (e) {}
     }
