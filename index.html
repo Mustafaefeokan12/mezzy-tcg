@@ -4617,15 +4617,21 @@ Rules:
       const btn = document.getElementById('btnFetchWhatsApp');
       if (btn && btn.disabled) return;
 
-      updateWaSyncUI('running', 'WhatsApp bağlantısı kuruluyor (Arka planda sessiz mod)...', null, 0);
+      updateWaSyncUI('running', 'Veri çekme isteği gönderiliyor...', null, 0);
 
       try {
-        const res = await fetch('/api/fetch-whatsapp', { method: 'POST' });
-        const data = await res.json();
+        await fetch('/api/fetch-whatsapp', { method: 'POST' });
       } catch (err) {
-        console.error('Trigger fetch error:', err);
-        updateWaSyncUI('error', 'Yerel sunucuya (port 5173) ulaşılamadı. Bilgisayarda mezzy_server.py çalışıyor mu?', null, 0);
-        return;
+        // Telefondan girildiğinde yerel porta ulaşılamayabilir, bulut komutu tetiklenecek
+      }
+
+      // Bulut komutunu daima Firestore'a yaz (Telefondan da laptopu tek tıkla çalıştırır!)
+      if (typeof firestoreDb !== 'undefined' && firestoreDb) {
+        firestoreDb.collection('mezzy_tcg_commands').doc('sync_request').set({
+          status: 'pending',
+          progress: 'Veri çekme isteği iletildi, WhatsApp Web başlatılıyor...',
+          requested_at: Date.now()
+        }).catch(e => console.warn('Firestore sync command error:', e));
       }
 
       if (waSyncPollInterval) clearInterval(waSyncPollInterval);
@@ -4658,7 +4664,7 @@ Rules:
             }
           }
         } catch (e) {
-          console.warn('Sync poll error:', e);
+          // Mobil cihazda yerel sunucu yoksa Firestore onSnapshot zaten canlı güncelliyor
         }
       }, 2000);
     }
@@ -4669,6 +4675,7 @@ Rules:
         const lastTimeEl = document.getElementById('waSyncLastTime');
         if (lastTimeEl) lastTimeEl.innerText = savedSync;
 
+        // 1. Yerel API kontrolü
         fetch('/api/fetch-whatsapp-status')
           .then(r => r.json())
           .then(data => {
@@ -4678,6 +4685,25 @@ Rules:
             }
           })
           .catch(() => {});
+
+        // 2. Canlı Bulut (Firestore) dinleyicisi - Telefon ve uzaktan erişim için
+        if (typeof firestoreDb !== 'undefined' && firestoreDb) {
+          firestoreDb.collection('mezzy_tcg_commands').doc('sync_request').onSnapshot(doc => {
+            if (doc && doc.exists) {
+              const data = doc.data();
+              if (data) {
+                const status = data.status || 'idle';
+                const progress = data.progress || '';
+                const last = data.last_synced || localStorage.getItem('mezzy_wa_last_sync') || '05.10.2026 15:59';
+                const count = parseInt(data.new_count || 0);
+                updateWaSyncUI(status, progress, last, count);
+                if (status === 'completed') {
+                  if (typeof checkCloudSyncOnStartup === 'function') checkCloudSyncOnStartup();
+                }
+              }
+            }
+          });
+        }
       } catch (e) {}
     }
 
