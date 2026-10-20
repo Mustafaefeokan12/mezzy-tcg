@@ -2792,6 +2792,9 @@
           totalPct: 0, totalDiff: 0,
           binderPct: 0, binderDiff: 0,
           slabsPct: 0, slabsDiff: 0,
+          organicTotalDiff: 0, organicTotalPct: 0,
+          organicBinderDiff: 0, organicBinderPct: 0,
+          organicSlabsDiff: 0, organicSlabsPct: 0,
           targetDays: 0
         };
       }
@@ -2799,6 +2802,28 @@
       let hist = priceChartingData.history;
       let curr = hist.find(h => h.daysAgo === 0) || hist[hist.length - 1];
       let days = TIMEFRAME_DAYS[tfKey] || 30;
+
+      let items = priceChartingData.items || [];
+      let summary = priceChartingData.summary || {};
+
+      let binderItems = items.filter(i => i.folder === 'binder');
+      let slabsItems = items.filter(i => (i.folder || '').includes('slab'));
+
+      let binderCost = summary.binderCostUsd || binderItems.reduce((acc, it) => acc + ((it.costPriceUsd || it.initialPriceUsd || it.priceUsd) * (it.qty || 1)), 0);
+      let slabsCost = summary.slabsCostUsd || slabsItems.reduce((acc, it) => acc + ((it.costPriceUsd || it.initialPriceUsd || it.priceUsd) * (it.qty || 1)), 0);
+      let totalCost = binderCost + slabsCost;
+
+      let binderVal = summary.binderUsd || curr.binderUsd || 0;
+      let slabsVal = summary.binderSlabsUsd || curr.binderSlabsUsd || 0;
+      let totalVal = binderVal + slabsVal;
+
+      // 1. All-Time Organic (Tüm zamanlar başlangıç maliyetine göre net kâr)
+      let allOrganicTotalDiff = totalVal - totalCost;
+      let allOrganicTotalPct = totalCost > 0 ? (allOrganicTotalDiff / totalCost) * 100 : 0;
+      let allOrganicBinderDiff = binderVal - binderCost;
+      let allOrganicBinderPct = binderCost > 0 ? (allOrganicBinderDiff / binderCost) * 100 : 0;
+      let allOrganicSlabsDiff = slabsVal - slabsCost;
+      let allOrganicSlabsPct = slabsCost > 0 ? (allOrganicSlabsDiff / slabsCost) * 100 : 0;
 
       // Find past milestone closest to target days
       let pastPoints = hist.filter(h => h.daysAgo >= days);
@@ -2815,17 +2840,69 @@
       let b = calc(curr.binderUsd, target.binderUsd);
       let s = calc(curr.binderSlabsUsd, target.binderSlabsUsd);
 
+      if (tfKey === 'all') {
+        return {
+          totalPct: t.pct, totalDiff: t.diff,
+          binderPct: b.pct, binderDiff: b.diff,
+          slabsPct: s.pct, slabsDiff: s.diff,
+          organicTotalDiff: allOrganicTotalDiff,
+          organicTotalPct: allOrganicTotalPct,
+          organicBinderDiff: allOrganicBinderDiff,
+          organicBinderPct: allOrganicBinderPct,
+          organicSlabsDiff: allOrganicSlabsDiff,
+          organicSlabsPct: allOrganicSlabsPct,
+          currTotal: curr.totalUsd,
+          currBinder: curr.binderUsd,
+          currSlabs: curr.binderSlabsUsd,
+          targetDays: target.daysAgo
+        };
+      }
+
+      // Periyot İçi Yeni Kart Maliyeti (Inflow / Sermaye Girişi Tespiti)
+      let targetDaysAgo = target.daysAgo || days;
+      let nowMs = Date.now();
+      let inflowItems = [];
+
+      for (let it of items) {
+        if (!it.dateAdded) continue;
+        let cardAddedMs = new Date(it.dateAdded).getTime();
+        let cardDaysAgo = Math.max(0, Math.floor((nowMs - cardAddedMs) / (1000 * 60 * 60 * 24)));
+        if (cardDaysAgo < targetDaysAgo && it.dateAdded !== '2026-10-13') {
+          inflowItems.push(it);
+        }
+      }
+
+      let inflowBinder = inflowItems.filter(i => i.folder === 'binder')
+        .reduce((acc, it) => acc + ((it.costPriceUsd || it.initialPriceUsd || it.priceUsd) * (it.qty || 1)), 0);
+      let inflowSlabs = inflowItems.filter(i => (i.folder || '').includes('slab'))
+        .reduce((acc, it) => acc + ((it.costPriceUsd || it.initialPriceUsd || it.priceUsd) * (it.qty || 1)), 0);
+      let inflowTotal = inflowBinder + inflowSlabs;
+
+      let organicTotalDiff = t.diff - inflowTotal;
+      let organicTotalPct = target.totalUsd > 0 ? (organicTotalDiff / target.totalUsd) * 100 : 0;
+
+      let organicBinderDiff = b.diff - inflowBinder;
+      let organicBinderPct = target.binderUsd > 0 ? (organicBinderDiff / target.binderUsd) * 100 : 0;
+
+      let organicSlabsDiff = s.diff - inflowSlabs;
+      let organicSlabsPct = target.binderSlabsUsd > 0 ? (organicSlabsDiff / target.binderSlabsUsd) * 100 : 0;
+
       return {
         totalPct: t.pct, totalDiff: t.diff,
         binderPct: b.pct, binderDiff: b.diff,
         slabsPct: s.pct, slabsDiff: s.diff,
+        organicTotalDiff: organicTotalDiff,
+        organicTotalPct: organicTotalPct,
+        organicBinderDiff: organicBinderDiff,
+        organicBinderPct: organicBinderPct,
+        organicSlabsDiff: organicSlabsDiff,
+        organicSlabsPct: organicSlabsPct,
         currTotal: curr.totalUsd,
         currBinder: curr.binderUsd,
         currSlabs: curr.binderSlabsUsd,
         targetDays: target.daysAgo
       };
     }
-
     
     // --- TÜRKİYE SATIŞ ÇARPANI VE HESAP FONKSİYONLARI ---
     function setTrMultiplier(mult, btnEl) {
@@ -2920,16 +2997,14 @@
 
       let isOrganic = (pcGrowthMode === 'organic');
 
-      let diffTotal = isOrganic ? organicTotalDiff : tfStats.totalDiff;
-      let pctTotal = isOrganic ? organicTotalPct : tfStats.totalPct;
+      let diffTotal = isOrganic ? tfStats.organicTotalDiff : tfStats.totalDiff;
+      let pctTotal = isOrganic ? tfStats.organicTotalPct : tfStats.totalPct;
 
-      let diffBinder = isOrganic ? organicBinderDiff : tfStats.binderDiff;
-      let pctBinder = isOrganic ? organicBinderPct : tfStats.binderPct;
+      let diffBinder = isOrganic ? tfStats.organicBinderDiff : tfStats.binderDiff;
+      let pctBinder = isOrganic ? tfStats.organicBinderPct : tfStats.binderPct;
 
-      let diffSlabs = isOrganic ? organicSlabsDiff : tfStats.slabsDiff;
-      let pctSlabs = isOrganic ? organicSlabsPct : tfStats.slabsPct;
-
-      // Toggle buton durumlarini esitle
+      let diffSlabs = isOrganic ? tfStats.organicSlabsDiff : tfStats.slabsDiff;
+      let pctSlabs = isOrganic ? tfStats.organicSlabsPct : tfStats.slabsPct;
       let btnOrg = document.getElementById('btnModeOrganic');
       let btnTot = document.getElementById('btnModeTotal');
       let lbl = document.getElementById('pcGrowthModeLabel');
